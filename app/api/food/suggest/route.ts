@@ -18,34 +18,56 @@ const EMPTY_RESULT: FoodSuggestResponse = {
   confidence: null,
 }
 
-// Handles both old schema fields and the new Singapore-optimised schema from the AI.
+// Broad cuisine terms the AI must not return as the primary suggestion.
+const GENERIC_BLACKLIST = new Set([
+  'western food', 'asian food', 'chinese food', 'indian food', 'malay food',
+  'chinese cuisine', 'indian cuisine', 'malay cuisine', 'asian cuisine',
+  'southeast asian food', 'mixed food', 'food', 'meal', 'rice dish', 'noodle dish',
+])
+
+function isGeneric(name: string): boolean {
+  return GENERIC_BLACKLIST.has(name.toLowerCase().trim())
+}
+
+// Maps the AI JSON (dish_name / top_suggestions / confidence / reasoning_summary)
+// to the stable client-facing shape.
 function normalizeResult(raw: unknown): FoodSuggestResponse {
   const obj = (raw ?? {}) as Record<string, unknown>
-
-  // New schema: primaryDish / alternatives / confidence / reasoning
-  // Old schema: primarySuggestion / alternativeSuggestions / reasoningShort
-  const primaryDish =
-    typeof obj.primaryDish === 'string' ? obj.primaryDish.trim() : null
-  const primarySuggestionLegacy =
-    typeof obj.primarySuggestion === 'string' ? obj.primarySuggestion.trim() : null
 
   const confidence =
     typeof obj.confidence === 'number' ? Math.min(1, Math.max(0, obj.confidence)) : null
 
-  // If confidence is present and below threshold, treat primary as uncertain
-  const primary = primaryDish || primarySuggestionLegacy
-  const primarySuggestion =
-    primary && (confidence === null || confidence >= 0.6) ? primary : null
+  // Accept dish_name (new schema) or primaryDish / primarySuggestion (legacy)
+  const rawPrimary =
+    typeof obj.dish_name === 'string' ? obj.dish_name.trim() :
+    typeof obj.primaryDish === 'string' ? obj.primaryDish.trim() :
+    typeof obj.primarySuggestion === 'string' ? obj.primarySuggestion.trim() :
+    null
 
-  const alternativesNew = Array.isArray(obj.alternatives)
-    ? (obj.alternatives as unknown[]).filter((x): x is string => typeof x === 'string').slice(0, 5)
+  const primarySuggestion =
+    rawPrimary && !isGeneric(rawPrimary) && (confidence === null || confidence >= 0.5)
+      ? rawPrimary
+      : null
+
+  // Accept top_suggestions[].name (new schema) or alternatives / alternativeSuggestions (legacy)
+  const topSuggestions: string[] = Array.isArray(obj.top_suggestions)
+    ? (obj.top_suggestions as unknown[])
+        .filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
+        .map((x) => (typeof x.name === 'string' ? x.name.trim() : ''))
+        .filter((n) => n.length > 0 && !isGeneric(n))
+        .slice(0, 5)
     : []
-  const alternativesLegacy = Array.isArray(obj.alternativeSuggestions)
-    ? (obj.alternativeSuggestions as unknown[]).filter((x): x is string => typeof x === 'string').slice(0, 5)
+
+  const legacyAlts: string[] = Array.isArray(obj.alternatives)
+    ? (obj.alternatives as unknown[]).filter((x): x is string => typeof x === 'string' && !isGeneric(x)).slice(0, 5)
+    : Array.isArray(obj.alternativeSuggestions)
+    ? (obj.alternativeSuggestions as unknown[]).filter((x): x is string => typeof x === 'string' && !isGeneric(x)).slice(0, 5)
     : []
-  const alternativeSuggestions = alternativesNew.length ? alternativesNew : alternativesLegacy
+
+  const alternativeSuggestions = topSuggestions.length ? topSuggestions : legacyAlts
 
   const reasoning =
+    typeof obj.reasoning_summary === 'string' ? obj.reasoning_summary.trim() :
     typeof obj.reasoning === 'string' ? obj.reasoning.trim() :
     typeof obj.reasoningShort === 'string' ? obj.reasoningShort.trim() :
     EMPTY_RESULT.reasoningShort
@@ -74,39 +96,44 @@ function extractJson(content: string): FoodSuggestResponse | null {
   }
 }
 
-const SYSTEM_PROMPT = `You are a highly trained food recognition assistant specialising in real-world dishes, especially in Singapore and Southeast Asia hawker and restaurant contexts.
+const SYSTEM_PROMPT = `You are a food recognition expert specializing in Singapore and Southeast Asian dishes.
 
-Your job is to identify the exact dish shown in an image as accurately as possible.
+Your task is to analyze the food image and identify the EXACT dish, not broad cuisine categories.
 
-You MUST prioritise:
-- Specific dish names (e.g. "Hainanese Chicken Rice", NOT "Chinese food")
-- Common real-world naming used by people in Singapore
-- Visual evidence from the image only (do not hallucinate)`
+Rules:
+- Identify the specific dish name first.
+- Do NOT return generic categories like "Western Food", "Asian Food", "Indian Food", "Malay Food".
+- Only return "Drinks" or "Bubble Tea" if the image clearly shows a beverage.
+- Consider Singapore hawker food, kopitiam food, zi char dishes, snacks, desserts, dim sum, Malay, Indian, Chinese, Peranakan, and Southeast Asian foods.
+- Focus on visible ingredients, sauce color, texture, shape, plating, and serving style.
+- If uncertain, give the best guess and include alternatives.
+- Prefer dish-level labels over cuisine-level labels.
+- Be careful not to confuse dark braised dishes, noodle dishes, rice dishes, dim sum dishes, and desserts.
+- Common Singapore dish examples include but are not limited to: Hainanese Chicken Rice, Laksa, Char Kway Teow, Nasi Lemak, Roti Prata, Bak Kut Teh, Satay, Hokkien Mee, Fishball Noodles, Wanton Mee, Carrot Cake, Mee Rebus, Mee Siam, Murtabak, Biryani, Chwee Kueh, Popiah, Chee Cheong Fun, Curry Puff, Tau Huay, Ice Kachang, Cendol, Chicken Feet, Braised Chicken Feet, Dim Sum Chicken Feet.`
 
-const USER_INSTRUCTIONS = `Analyze the food image and return ONLY valid JSON — no markdown, no explanation outside JSON.
+const USER_INSTRUCTIONS = `Analyze the food image and return ONLY valid JSON — no markdown, no text outside the JSON object.
 
-Instructions:
-1. Identify the PRIMARY DISH (use specific dish names only).
-2. If multiple items exist, choose the MAIN dish (largest or central item).
-3. Assign a confidence score between 0 and 1:
-   - 0.85–1.00: Very confident (clear visual match)
-   - 0.60–0.84: Likely but not certain
-   - < 0.60: Uncertain — be strict, do not overestimate
-4. If uncertain, provide 2–3 closely related alternatives.
-5. Prefer Singapore/local dish names (e.g. "Chicken Rice" over "Poached Chicken with Rice").
-
-Good dish name examples: Hainanese Chicken Rice, Nasi Lemak, Char Kway Teow, Laksa, Roti Prata, Biryani, Fishball Noodles, Wanton Mee, Satay, Bak Kut Teh, Ramen, Sushi, Burger, Fish and Chips, Pasta Carbonara.
-Bad examples (DO NOT USE): Western Food, Asian Food, Chinese Cuisine, Indian Cuisine, Mixed Food.
-
-If the image is unclear: lower confidence, provide alternatives, do NOT invent a precise dish.
-
-Required output schema (strict JSON):
+Return STRICT JSON in this exact shape:
 {
-  "primaryDish": "string",
-  "confidence": number,
-  "alternatives": ["string", "string"],
-  "reasoning": "short visual explanation under 20 words"
-}`
+  "dish_name": "string",
+  "alternate_names": ["string"],
+  "cuisine": "string",
+  "confidence": 0,
+  "top_suggestions": [
+    { "name": "string", "confidence": 0 },
+    { "name": "string", "confidence": 0 },
+    { "name": "string", "confidence": 0 }
+  ],
+  "key_visual_clues": ["string"],
+  "reasoning_summary": "short string under 20 words"
+}
+
+Confidence scoring:
+- 0.85–1.00: Very confident (clear visual match)
+- 0.60–0.84: Likely but not certain
+- < 0.60: Uncertain — be strict, do not overestimate
+
+Do NOT use generic cuisine labels in dish_name or top_suggestions names. Always use specific dish names.`
 
 async function requestAiSuggestion(apiKey: string, imageUrl: string): Promise<FoodSuggestResponse> {
   const configuredModel = process.env.OPENAI_MODEL || 'gpt-4o-mini'
@@ -120,8 +147,8 @@ async function requestAiSuggestion(apiKey: string, imageUrl: string): Promise<Fo
       },
       body: JSON.stringify({
         model,
-        temperature: 0.1,
-        max_tokens: 300,
+        temperature: 0.0,
+        max_tokens: 400,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           {

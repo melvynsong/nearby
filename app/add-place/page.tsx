@@ -4,6 +4,15 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type FlowState =
+  | 'idle'
+  | 'converting_image'
+  | 'analyzing'
+  | 'analysis_success'
+  | 'analysis_error'
+
 type Session = {
   memberId: string
   memberName: string
@@ -33,70 +42,65 @@ type Category = {
   name: string
 }
 
-type FoodSuggestResult = {
-  primarySuggestion: string | null
-  alternativeSuggestions: string[]
-  detectedTextHints: string[]
-  containsMultipleFoods: boolean
-  reasoningShort: string
+type AiResult = {
+  dish: string | null
+  suggestions: string[]   // dish-level names, max 5
   confidence: number | null
+  reasoning: string
 }
 
-const emptySuggestion: FoodSuggestResult = {
-  primarySuggestion: null,
-  alternativeSuggestions: [],
-  detectedTextHints: [],
-  containsMultipleFoods: false,
-  reasoningShort: '',
+const emptyAiResult: AiResult = {
+  dish: null,
+  suggestions: [],
   confidence: null,
+  reasoning: '',
 }
 
-const broadCategories = [
-  'Chicken Rice',
-  'Western Food',
-  'Indian Food',
-  'Malay Food',
-  'Seafood',
-  'Cafe / Dessert',
-  'Hotpot',
-  'Japanese',
-  'Korean',
-  'Halal',
-  'Vegetarian',
-  'Drinks / Bubble Tea',
-  'Other',
-]
+// ─── HEIC helpers ─────────────────────────────────────────────────────────────
 
-function mapHintToCategory(text: string): string | null {
-  const x = text.toLowerCase()
-  if (x.includes('chicken rice')) return 'Chicken Rice'
-  if (x.includes('korean') || x.includes('kimchi') || x.includes('tteokbokki')) return 'Korean'
-  if (x.includes('japanese') || x.includes('ramen') || x.includes('sushi') || x.includes('donburi')) return 'Japanese'
-  if (x.includes('western') || x.includes('pasta') || x.includes('steak') || x.includes('burger')) return 'Western Food'
-  if (x.includes('biryani') || x.includes('naan') || x.includes('curry') || x.includes('indian')) return 'Indian Food'
-  if (x.includes('nasi lemak') || x.includes('satay') || x.includes('rendang') || x.includes('malay')) return 'Malay Food'
-  if (x.includes('seafood') || x.includes('crab') || x.includes('prawn') || x.includes('fish')) return 'Seafood'
-  if (x.includes('dessert') || x.includes('cake') || x.includes('ice cream') || x.includes('cafe')) return 'Cafe / Dessert'
-  if (x.includes('hotpot') || x.includes('steamboat')) return 'Hotpot'
-  if (x.includes('halal')) return 'Halal'
-  if (x.includes('vegetarian') || x.includes('vegan')) return 'Vegetarian'
-  if (x.includes('bubble tea') || x.includes('boba') || x.includes('drink') || x.includes('coffee') || x.includes('tea')) return 'Drinks / Bubble Tea'
-  return null
+function isHeic(file: File): boolean {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+  return ext === 'heic' || ext === 'heif' || file.type === 'image/heic' || file.type === 'image/heif'
 }
 
-function categoryCandidatesFromAi(result: FoodSuggestResult): string[] {
-  const inputs = [result.primarySuggestion, ...result.alternativeSuggestions].filter(Boolean) as string[]
-  const mapped = inputs.map(mapHintToCategory).filter(Boolean) as string[]
-  const uniq = [...new Set(mapped)]
-  if (uniq.length >= 5) return uniq.slice(0, 5)
-
-  for (const fallback of broadCategories) {
-    if (!uniq.includes(fallback)) uniq.push(fallback)
-    if (uniq.length >= 5) break
-  }
-
-  return uniq
+async function convertHeicToJpeg(file: File): Promise<File> {
+  // Dynamic import keeps heic2any out of the main JS bundle
+  const mod = await import('heic2any')
+  const heic2any = (mod.default ?? mod) as (opts: { blob: Blob; toType: string; quality: number }) => Promise<Blob | Blob[]>
+  const result = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 })
+  const blob = Array.isArray(result) ? result[0] : result
+  return new File([blob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' })
 }
+
+// ─── AI response normalisation ────────────────────────────────────────────────
+
+const GENERIC_BLACKLIST = new Set([
+  'western food', 'asian food', 'chinese food', 'indian food', 'malay food',
+  'chinese cuisine', 'indian cuisine', 'malay cuisine', 'asian cuisine',
+  'southeast asian food', 'mixed food', 'food', 'meal',
+])
+
+function isGeneric(name: string): boolean {
+  return GENERIC_BLACKLIST.has(name.toLowerCase().trim())
+}
+
+function parseAiResponse(data: Record<string, unknown>): AiResult {
+  const confidence = typeof data.confidence === 'number' ? data.confidence : null
+
+  const rawDish = typeof data.primarySuggestion === 'string' ? data.primarySuggestion.trim() : null
+  const dish = rawDish && !isGeneric(rawDish) && (confidence === null || confidence >= 0.5) ? rawDish : null
+
+  const rawAlts = Array.isArray(data.alternativeSuggestions)
+    ? (data.alternativeSuggestions as unknown[])
+        .filter((x): x is string => typeof x === 'string' && x.trim().length > 0 && !isGeneric(x))
+        .slice(0, 5)
+    : []
+
+  const reasoning = typeof data.reasoningShort === 'string' ? data.reasoningShort : ''
+  return { dish, suggestions: rawAlts, confidence, reasoning }
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AddPlace() {
   const router = useRouter()
@@ -111,13 +115,19 @@ export default function AddPlace() {
     }
   })
 
+  // ── Image / Analysis state
+  const [flowState, setFlowState] = useState<FlowState>('idle')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [aiSuggestion, setAiSuggestion] = useState<FoodSuggestResult>(emptySuggestion)
+  const [aiResult, setAiResult] = useState<AiResult>(emptyAiResult)
   const [aiError, setAiError] = useState('')
-  const [showSuggestionSheet, setShowSuggestionSheet] = useState(false)
 
+  // ── Dish selection
+  const [selectedDish, setSelectedDish] = useState<string | null>(null)
+  const [editingDish, setEditingDish] = useState(false)
+  const [customDish, setCustomDish] = useState('')
+
+  // ── Location
   const [query, setQuery] = useState('')
   const [predictions, setPredictions] = useState<Prediction[]>([])
   const [searching, setSearching] = useState(false)
@@ -125,11 +135,10 @@ export default function AddPlace() {
   const [loadingDetails, setLoadingDetails] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
 
+  // ── Categories (group's saved list, for fallback)
   const [categories, setCategories] = useState<Category[]>([])
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
-  const [selectedSuggestionName, setSelectedSuggestionName] = useState<string | null>(null)
-  const [newCategoryName, setNewCategoryName] = useState('')
 
+  // ── Note & save
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -190,61 +199,70 @@ export default function AddPlace() {
     }
   }, [session, router])
 
-  const runAutoAnalysis = useCallback(async (file: File) => {
-    setIsAnalyzing(true)
+  // ── Run OpenAI analysis
+  const runAnalysis = useCallback(async (file: File) => {
+    setFlowState('analyzing')
     setAiError('')
-    setAiSuggestion(emptySuggestion)
-
     try {
       const formData = new FormData()
       formData.append('image', file)
-
-      const res = await fetch('/api/food/suggest', {
-        method: 'POST',
-        body: formData,
-      })
+      const res = await fetch('/api/food/suggest', { method: 'POST', body: formData })
       const data = await res.json()
 
       if (data.error) {
-        setAiError('Could not analyze this photo. You can still choose category manually.')
+        setAiError('Photo analysis failed. You can type the dish name below.')
+        setFlowState('analysis_error')
         return
       }
 
-      const normalized: FoodSuggestResult = {
-        primarySuggestion: typeof data.primarySuggestion === 'string' ? data.primarySuggestion : null,
-        alternativeSuggestions: Array.isArray(data.alternativeSuggestions) ? data.alternativeSuggestions : [],
-        detectedTextHints: Array.isArray(data.detectedTextHints) ? data.detectedTextHints : [],
-        containsMultipleFoods: Boolean(data.containsMultipleFoods),
-        reasoningShort: typeof data.reasoningShort === 'string' ? data.reasoningShort : '',
-        confidence: typeof data.confidence === 'number' ? data.confidence : null,
+      const result = parseAiResponse(data as Record<string, unknown>)
+      setAiResult(result)
+
+      // Auto-select when confidence is high (≥ 0.85)
+      if (result.dish && (result.confidence ?? 0) >= 0.85) {
+        setSelectedDish(result.dish)
       }
 
-      setAiSuggestion(normalized)
-      setShowSuggestionSheet(true)
+      setFlowState('analysis_success')
     } catch {
-      setAiError('Could not analyze this photo. You can still choose category manually.')
-    } finally {
-      setIsAnalyzing(false)
+      setAiError('Could not analyze this photo.')
+      setFlowState('analysis_error')
     }
   }, [])
 
-  const handleFilePicked = async (file: File | null) => {
-    setSelectedFile(file)
-    setSelectedSuggestionName(null)
-    setSelectedCategoryId(null)
+  // ── Handle file pick — with HEIC conversion
+  const handleFilePicked = useCallback(async (file: File | null) => {
+    if (!file) return
+
+    // Reset dish + location state
+    setSelectedDish(null)
+    setCustomDish('')
+    setEditingDish(false)
     setSelectedPlace(null)
     setQuery('')
+    setAiResult(emptyAiResult)
+    setAiError('')
 
     if (previewUrl) URL.revokeObjectURL(previewUrl)
+    setPreviewUrl(null)
 
-    if (!file) {
-      setPreviewUrl(null)
-      return
+    let processedFile = file
+
+    if (isHeic(file)) {
+      setFlowState('converting_image')
+      try {
+        processedFile = await convertHeicToJpeg(file)
+      } catch {
+        setAiError('Could not read this image format. Please try a JPEG or PNG.')
+        setFlowState('analysis_error')
+        return
+      }
     }
 
-    setPreviewUrl(URL.createObjectURL(file))
-    await runAutoAnalysis(file)
-  }
+    setSelectedFile(processedFile)
+    setPreviewUrl(URL.createObjectURL(processedFile))
+    await runAnalysis(processedFile)
+  }, [previewUrl, runAnalysis])
 
   const fetchPredictions = useCallback(
     async (q: string) => {
@@ -288,7 +306,6 @@ export default function AddPlace() {
     setPredictions([])
     setLoadingDetails(true)
     setError('')
-
     try {
       const res = await fetch('/api/places/details', {
         method: 'POST',
@@ -297,9 +314,7 @@ export default function AddPlace() {
       })
       const data = await res.json()
       if (data.error) setError(`Could not load place details: ${data.error}`)
-      else {
-        setSelectedPlace(data)
-      }
+      else setSelectedPlace(data)
     } catch {
       setError('Failed to load place details. Please try again.')
     } finally {
@@ -307,37 +322,22 @@ export default function AddPlace() {
     }
   }
 
-  const clearSelection = () => {
-    setSelectedPlace(null)
-    setQuery('')
-    setPredictions([])
-  }
+  const clearPlace = () => { setSelectedPlace(null); setQuery(''); setPredictions([]) }
 
-  const handleSelectExistingCategory = (id: string) => {
-    setSelectedCategoryId((prev) => (prev === id ? null : id))
-    setSelectedSuggestionName(null)
-    setNewCategoryName('')
-  }
-
-  const handleSelectSuggestion = (name: string) => {
-    setSelectedSuggestionName((prev) => (prev === name ? null : name))
-    setSelectedCategoryId(null)
-    setNewCategoryName('')
-    setShowSuggestionSheet(false)
-  }
-
+  // ── Resolve dish name to a food_categories row (create if needed)
   const resolveCategoryId = async (): Promise<string | null> => {
     if (!session) return null
-    if (selectedCategoryId) return selectedCategoryId
+    const dishName = (customDish.trim() || selectedDish || '').trim()
+    if (!dishName) return null
 
-    const proposedName = (newCategoryName || selectedSuggestionName || '').trim()
-    if (!proposedName) return null
+    const match = categories.find((c) => c.name.toLowerCase() === dishName.toLowerCase())
+    if (match) return match.id
 
     const { data: existing } = await supabase
       .from('food_categories')
       .select('id')
       .eq('group_id', session.groupId)
-      .ilike('name', proposedName)
+      .ilike('name', dishName)
       .maybeSingle()
 
     if (existing?.id) return existing.id
@@ -345,7 +345,7 @@ export default function AddPlace() {
     const { data: inserted, error: insertErr } = await supabase
       .from('food_categories')
       .insert({
-        name: proposedName,
+        name: dishName,
         group_id: session.groupId,
         created_by_member_id: session.memberId,
       })
@@ -365,7 +365,7 @@ export default function AddPlace() {
         .from('food_categories')
         .select('id')
         .eq('group_id', session.groupId)
-        .ilike('name', proposedName)
+        .ilike('name', dishName)
         .maybeSingle()
 
       return duplicate?.id ?? null
@@ -373,8 +373,6 @@ export default function AddPlace() {
 
     return null
   }
-
-  const isCategoryChosen = Boolean(selectedCategoryId || selectedSuggestionName || newCategoryName.trim())
 
   const handleSave = async () => {
     setError('')
@@ -392,7 +390,7 @@ export default function AddPlace() {
 
     const categoryId = await resolveCategoryId()
     if (!categoryId) {
-      setError('Please confirm a food category before saving.')
+      setError('Please confirm the dish before saving.')
       return
     }
 
@@ -501,9 +499,21 @@ export default function AddPlace() {
     }
   }
 
+  // ─── Derived state ─────────────────────────────────────────────────────────
+
   if (!session) return null
 
-  const aiCandidates = categoryCandidatesFromAi(aiSuggestion)
+  const isBlocking = flowState === 'converting_image' || flowState === 'analyzing'
+  const isDishConfirmed = Boolean(selectedDish || customDish.trim())
+  const hasPhoto = !!previewUrl || isBlocking
+  const confidence = aiResult.confidence
+  const isHighConf = isDishConfirmed && (confidence ?? 0) >= 0.85
+  const isMediumConf = !isHighConf && confidence !== null && confidence >= 0.6
+
+  const chips = [
+    ...(aiResult.dish ? [aiResult.dish] : []),
+    ...aiResult.suggestions.filter((s) => s !== aiResult.dish),
+  ].slice(0, 5)
 
   const mapEmbedSrc = selectedPlace
     ? selectedPlace.lat != null && selectedPlace.lng != null
@@ -513,10 +523,17 @@ export default function AddPlace() {
       : null
     : null
 
+  // ─── Render ───────────────────────────────────────────────────────────────
+
   return (
-    <main className="min-h-screen bg-neutral-50 p-5 pb-28">
-      <div className="mx-auto max-w-md">
-        <button onClick={() => router.back()} className="mb-5 text-sm text-neutral-500 hover:text-neutral-800 transition-colors">
+    <main className="min-h-screen bg-neutral-50 pb-28" style={{ overflowX: 'hidden', maxWidth: '100vw' }}>
+      <div className="mx-auto w-full max-w-md px-4 pt-5 box-border">
+
+        <button
+          onClick={() => router.back()}
+          disabled={isBlocking}
+          className="mb-5 text-sm text-neutral-500 hover:text-neutral-800 transition-colors disabled:opacity-40"
+        >
           ← Back
         </button>
 
@@ -524,42 +541,42 @@ export default function AddPlace() {
         <p className="mt-1 text-sm text-neutral-500">Start with a photo.</p>
 
         <div className="mt-5 space-y-4">
-          <section className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm transition-all duration-300">
-            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-500">Step 1 · Add a food photo</p>
 
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => cameraInputRef.current?.click()}
-                className="rounded-2xl border border-neutral-200 bg-neutral-900 px-3 py-3 text-left text-white transition-transform duration-200 hover:scale-[1.01]"
-              >
-                <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
-                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 7h3l2-2h6l2 2h3v12H4z" />
-                    <circle cx="12" cy="13" r="4" />
-                  </svg>
-                </div>
-                <p className="text-sm font-semibold">Take Food Photo</p>
-              </button>
+          {/* ── Photo section ──────────────────────────────────────── */}
+          <section className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
+            {!isBlocking && (
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="rounded-2xl border border-neutral-200 bg-neutral-900 px-3 py-3 text-left text-white transition-transform duration-200 hover:scale-[1.01] active:scale-[0.99]"
+                >
+                  <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M4 7h3l2-2h6l2 2h3v12H4z" /><circle cx="12" cy="13" r="4" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-semibold">{hasPhoto ? 'Retake' : 'Take Photo'}</p>
+                </button>
 
-              <button
-                onClick={() => galleryInputRef.current?.click()}
-                className="rounded-2xl border border-neutral-200 bg-neutral-100 px-3 py-3 text-left text-neutral-800 transition-transform duration-200 hover:scale-[1.01]"
-              >
-                <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white">
-                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="4" width="18" height="16" rx="2" />
-                    <circle cx="8.5" cy="9" r="1.5" />
-                    <path d="M21 16l-5-5L5 20" />
-                  </svg>
-                </div>
-                <p className="text-sm font-semibold">Choose from Gallery</p>
-              </button>
-            </div>
+                <button
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="rounded-2xl border border-neutral-200 bg-neutral-100 px-3 py-3 text-left text-neutral-800 transition-transform duration-200 hover:scale-[1.01] active:scale-[0.99]"
+                >
+                  <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white">
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="M21 16l-5-5L5 20" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-semibold">{hasPhoto ? 'Replace' : 'Choose Photo'}</p>
+                </button>
+              </div>
+            )}
 
+            {/* Hidden file inputs — HEIC/HEIF accepted explicitly */}
             <input
               ref={cameraInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,.heic,.heif"
               capture="environment"
               className="hidden"
               onChange={(e) => void handleFilePicked(e.target.files?.[0] ?? null)}
@@ -567,214 +584,291 @@ export default function AddPlace() {
             <input
               ref={galleryInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,.heic,.heif"
               className="hidden"
               onChange={(e) => void handleFilePicked(e.target.files?.[0] ?? null)}
             />
 
             {previewUrl && (
-              <div className="mt-4 transition-all duration-300">
-                <img src={previewUrl} alt="Food preview" className="h-56 w-full rounded-2xl border border-neutral-200 object-cover" />
-                <p className={`mt-2 text-xs text-neutral-500 transition-opacity duration-300 ${isAnalyzing ? 'opacity-100' : 'opacity-0'}`}>
-                  Analyzing your photo...
-                </p>
-                {aiError && <p className="mt-1 text-xs text-amber-700">{aiError}</p>}
-              </div>
-            )}
-          </section>
-
-          <section className={`rounded-3xl border p-4 shadow-sm transition-all duration-300 ${isCategoryChosen ? 'border-neutral-200 bg-white' : 'border-neutral-200 bg-neutral-100/70'}`}>
-            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-500">Step 2 · Choose category</p>
-            <h2 className="text-sm font-semibold text-neutral-900">Suggested food categories</h2>
-
-            {aiCandidates.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {aiCandidates.map((name, idx) => (
-                  <button
-                    key={`${name}-${idx}`}
-                    onClick={() => handleSelectSuggestion(name)}
-                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
-                      selectedSuggestionName === name
-                        ? 'bg-emerald-600 text-white shadow-sm'
-                        : idx === 0
-                        ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
-                        : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                    }`}
-                  >
-                    {name}
-                    {idx === 0 ? ' · Top pick' : ''}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {categories.length > 0 && (
-              <div className="mt-3">
-                <p className="mb-2 text-xs text-neutral-500">Used by your group</p>
-                <div className="flex flex-wrap gap-2">
-                  {categories.map((cat) => (
-                    <button
-                      key={cat.id}
-                      onClick={() => handleSelectExistingCategory(cat.id)}
-                      className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
-                        selectedCategoryId === cat.id
-                          ? 'bg-neutral-900 text-white'
-                          : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                      }`}
-                    >
-                      {cat.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="mt-3">
-              <input
-                type="text"
-                value={newCategoryName}
-                onChange={(e) => {
-                  setNewCategoryName(e.target.value)
-                  setSelectedCategoryId(null)
-                  setSelectedSuggestionName(null)
-                }}
-                placeholder="Or add your own category"
-                className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-neutral-500"
-              />
-            </div>
-          </section>
-
-          <section className={`rounded-3xl border p-4 shadow-sm transition-all duration-300 ${isCategoryChosen ? 'border-neutral-200 bg-white' : 'border-neutral-200 bg-neutral-100/70'}`}>
-            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-500">Step 3 · Where is this place?</p>
-
-            {!isCategoryChosen ? (
-              <p className="text-sm text-neutral-500">Choose a category first to continue.</p>
-            ) : selectedPlace ? (
-              <div className="space-y-3">
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-neutral-900">{selectedPlace.name}</p>
-                      {selectedPlace.formatted_address && (
-                        <p className="mt-0.5 text-xs text-neutral-600">{selectedPlace.formatted_address}</p>
-                      )}
-                      {typeof selectedPlace.rating === 'number' && (
-                        <p className="mt-1 text-xs text-neutral-500">⭐ {selectedPlace.rating.toFixed(1)}</p>
-                      )}
-                    </div>
-                    <button onClick={clearSelection} className="text-neutral-400 hover:text-neutral-700 text-lg leading-none">×</button>
-                  </div>
-                </div>
-
-                {mapEmbedSrc ? (
-                  <iframe
-                    title="Place map preview"
-                    width="100%"
-                    height="180"
-                    style={{ border: 0, borderRadius: '12px' }}
-                    loading="lazy"
-                    src={mapEmbedSrc}
-                  />
-                ) : (
-                  <div className="h-24 grid place-items-center rounded-xl border border-neutral-200 text-xs text-neutral-400">
-                    Map preview unavailable for this place.
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="relative" ref={dropdownRef}>
-                <input
-                  type="text"
-                  value={query}
-                  onChange={handleQueryChange}
-                  onFocus={() => predictions.length > 0 && setShowDropdown(true)}
-                  placeholder="Search place name or address"
-                  autoComplete="off"
-                  className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-neutral-600"
+              <div className={`${!isBlocking ? 'mt-4' : ''} w-full`}>
+                <img
+                  src={previewUrl}
+                  alt="Food preview"
+                  className="w-full rounded-2xl border border-neutral-200 object-cover"
+                  style={{ maxWidth: '100%', maxHeight: '240px', display: 'block' }}
                 />
-                {searching && <p className="mt-2 text-xs text-neutral-400">Searching places...</p>}
-                {loadingDetails && <p className="mt-2 text-xs text-neutral-400">Loading place details...</p>}
-
-                {showDropdown && predictions.length > 0 && (
-                  <div className="absolute z-10 mt-2 w-full overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg">
-                    {predictions.map((p) => (
-                      <button
-                        key={p.placeId}
-                        onClick={() => handleSelectPrediction(p)}
-                        className="w-full border-b border-neutral-100 px-4 py-3 text-left transition-colors hover:bg-neutral-50 last:border-b-0"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-medium text-neutral-900">{p.text}</p>
-                          {typeof p.rating === 'number' && <span className="text-xs text-neutral-500">⭐ {p.rating.toFixed(1)}</span>}
-                        </div>
-                        {p.secondaryText && <p className="mt-0.5 truncate text-xs text-neutral-500">{p.secondaryText}</p>}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
           </section>
 
-          <section className={`rounded-3xl border p-4 shadow-sm transition-all duration-300 ${isCategoryChosen ? 'border-neutral-200 bg-white' : 'border-neutral-200 bg-neutral-100/70'}`}>
-            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-500">Step 4 · Add a note</p>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="What should people know about this place?"
-              rows={3}
-              className="w-full resize-none rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-neutral-600"
-              disabled={!isCategoryChosen}
-            />
-          </section>
+          {/* ── Dish section ───────────────────────────────────────── */}
+          {(flowState === 'analysis_success' || flowState === 'analysis_error') && (
+            <section className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
 
+              {flowState === 'analysis_error' && (
+                <>
+                  <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-2">Dish</p>
+                  {aiError && <p className="mb-3 text-sm text-amber-700">{aiError}</p>}
+                  <input
+                    type="text"
+                    value={customDish}
+                    onChange={(e) => { setCustomDish(e.target.value); setSelectedDish(null) }}
+                    placeholder="Type dish name"
+                    className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-neutral-600 min-w-0 box-border"
+                  />
+                </>
+              )}
+
+              {flowState === 'analysis_success' && (
+                <>
+                  {/* High confidence — auto-selected, show with edit option */}
+                  {isHighConf && !editingDish && (
+                    <>
+                      <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-1">We think this is</p>
+                      <div className="flex items-center justify-between gap-3 min-w-0">
+                        <p className="text-xl font-semibold text-neutral-900 min-w-0 break-words">{selectedDish}</p>
+                        <button
+                          onClick={() => setEditingDish(true)}
+                          className="shrink-0 text-xs text-neutral-400 underline hover:text-neutral-700"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                      {aiResult.reasoning && (
+                        <p className="mt-1 text-xs text-neutral-400 break-words">{aiResult.reasoning}</p>
+                      )}
+                    </>
+                  )}
+
+                  {/* Medium confidence — show chips for quick confirmation */}
+                  {!isHighConf && isMediumConf && !editingDish && (
+                    <>
+                      <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-3">What is this dish?</p>
+                      <div className="flex flex-wrap gap-2">
+                        {chips.map((name, idx) => (
+                          <button
+                            key={`chip-med-${idx}`}
+                            onClick={() => { setSelectedDish(name); setCustomDish('') }}
+                            className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all min-w-0 ${
+                              selectedDish === name
+                                ? 'bg-neutral-900 text-white'
+                                : idx === 0
+                                ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                            }`}
+                          >
+                            {name}
+                          </button>
+                        ))}
+                      </div>
+                      {!selectedDish && (
+                        <input
+                          type="text"
+                          value={customDish}
+                          onChange={(e) => { setCustomDish(e.target.value); setSelectedDish(null) }}
+                          placeholder="Something else?"
+                          className="mt-3 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-neutral-600 min-w-0 box-border"
+                        />
+                      )}
+                    </>
+                  )}
+
+                  {/* Low confidence — manual entry with optional chips */}
+                  {!isHighConf && !isMediumConf && !editingDish && (
+                    <>
+                      <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-3">Help us choose the closest dish</p>
+                      {chips.length > 0 && (
+                        <div className="mb-3 flex flex-wrap gap-2">
+                          {chips.map((name, idx) => (
+                            <button
+                              key={`chip-low-${idx}`}
+                              onClick={() => { setSelectedDish(name); setCustomDish('') }}
+                              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all min-w-0 ${
+                                selectedDish === name
+                                  ? 'bg-neutral-900 text-white'
+                                  : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                              }`}
+                            >
+                              {name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <input
+                        type="text"
+                        value={customDish}
+                        onChange={(e) => { setCustomDish(e.target.value); setSelectedDish(null) }}
+                        placeholder="Type dish name"
+                        className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-neutral-600 min-w-0 box-border"
+                      />
+                    </>
+                  )}
+
+                  {/* Edit mode — overrides high-confidence auto-select */}
+                  {editingDish && (
+                    <>
+                      <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-3">Edit dish</p>
+                      {chips.length > 0 && (
+                        <div className="mb-3 flex flex-wrap gap-2">
+                          {chips.map((name, idx) => (
+                            <button
+                              key={`chip-edit-${idx}`}
+                              onClick={() => { setSelectedDish(name); setCustomDish(''); setEditingDish(false) }}
+                              className="rounded-full px-3 py-1.5 text-sm font-medium bg-neutral-100 text-neutral-700 hover:bg-neutral-200 transition-all min-w-0"
+                            >
+                              {name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <input
+                        type="text"
+                        defaultValue={customDish || selectedDish || ''}
+                        onChange={(e) => { setCustomDish(e.target.value); setSelectedDish(null) }}
+                        placeholder="Dish name"
+                        autoFocus
+                        className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-neutral-600 min-w-0 box-border"
+                      />
+                      {customDish.trim() && (
+                        <button
+                          onClick={() => { setSelectedDish(customDish.trim()); setCustomDish(''); setEditingDish(false) }}
+                          className="mt-2 text-xs text-neutral-500 underline"
+                        >
+                          Confirm
+                        </button>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+            </section>
+          )}
+
+          {/* ── Location section ────────────────────────────────────── */}
+          {isDishConfirmed && (
+            <section className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
+              <p className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-400">Where is this place?</p>
+
+              {selectedPlace ? (
+                <div className="space-y-3 w-full">
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 w-full box-border">
+                    <div className="flex items-start justify-between gap-3 min-w-0">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-neutral-900 break-words">{selectedPlace.name}</p>
+                        {selectedPlace.formatted_address && (
+                          <p className="mt-0.5 text-xs text-neutral-600 break-words">{selectedPlace.formatted_address}</p>
+                        )}
+                        {typeof selectedPlace.rating === 'number' && (
+                          <p className="mt-1 text-xs text-neutral-500">⭐ {selectedPlace.rating.toFixed(1)}</p>
+                        )}
+                      </div>
+                      <button onClick={clearPlace} className="shrink-0 text-neutral-400 hover:text-neutral-700 text-lg leading-none">×</button>
+                    </div>
+                  </div>
+
+                  {mapEmbedSrc ? (
+                    <iframe
+                      title="Place map preview"
+                      width="100%"
+                      height="180"
+                      style={{ border: 0, borderRadius: '12px', maxWidth: '100%', display: 'block' }}
+                      loading="lazy"
+                      src={mapEmbedSrc}
+                    />
+                  ) : (
+                    <div className="h-24 grid place-items-center rounded-xl border border-neutral-200 text-xs text-neutral-400">
+                      Map preview unavailable.
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="relative w-full" ref={dropdownRef}>
+                  <input
+                    type="text"
+                    value={query}
+                    onChange={handleQueryChange}
+                    onFocus={() => predictions.length > 0 && setShowDropdown(true)}
+                    placeholder="Search place name or address"
+                    autoComplete="off"
+                    className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-neutral-600 min-w-0 box-border"
+                  />
+                  {searching && <p className="mt-2 text-xs text-neutral-400">Searching...</p>}
+                  {loadingDetails && <p className="mt-2 text-xs text-neutral-400">Loading details...</p>}
+
+                  {showDropdown && predictions.length > 0 && (
+                    <div className="absolute z-10 mt-2 w-full overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg">
+                      {predictions.map((p) => (
+                        <button
+                          key={p.placeId}
+                          onClick={() => handleSelectPrediction(p)}
+                          className="w-full border-b border-neutral-100 px-4 py-3 text-left transition-colors hover:bg-neutral-50 last:border-b-0"
+                        >
+                          <div className="flex items-start justify-between gap-2 min-w-0">
+                            <p className="text-sm font-medium text-neutral-900 min-w-0 break-words">{p.text}</p>
+                            {typeof p.rating === 'number' && (
+                              <span className="shrink-0 text-xs text-neutral-500">⭐ {p.rating.toFixed(1)}</span>
+                            )}
+                          </div>
+                          {p.secondaryText && <p className="mt-0.5 truncate text-xs text-neutral-500">{p.secondaryText}</p>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* ── Note section ────────────────────────────────────────── */}
+          {isDishConfirmed && (
+            <section className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
+              <p className="mb-3 text-xs font-medium uppercase tracking-wide text-neutral-400">Add a note</p>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="What should people know?"
+                rows={3}
+                className="w-full resize-none rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-neutral-600 min-w-0 box-border"
+              />
+            </section>
+          )}
+
+          {/* ── Error ───────────────────────────────────────────────── */}
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 p-4">
               {failedStage && <p className="text-xs font-semibold uppercase tracking-wide text-red-500">{failedStage}</p>}
-              <p className="text-sm text-red-700">{error}</p>
+              <p className="text-sm text-red-700 break-words">{error}</p>
             </div>
           )}
 
-          <button
-            onClick={handleSave}
-            disabled={saving || loadingDetails || !isCategoryChosen}
-            className="w-full rounded-xl bg-neutral-900 px-4 py-3 text-sm font-medium text-white transition-all duration-300 hover:opacity-95 disabled:opacity-50"
-          >
-            {saving ? 'Saving...' : 'Save food spot'}
-          </button>
+          {/* ── Save button ─────────────────────────────────────────── */}
+          {isDishConfirmed && (
+            <button
+              onClick={handleSave}
+              disabled={saving || loadingDetails || isBlocking}
+              className="w-full rounded-xl bg-neutral-900 px-4 py-3 text-sm font-medium text-white transition-all duration-300 hover:opacity-95 disabled:opacity-40"
+            >
+              {saving ? 'Saving...' : 'Save food spot'}
+            </button>
+          )}
+
         </div>
       </div>
 
-      {showSuggestionSheet && aiCandidates.length > 0 && (
-        <div className="fixed inset-0 z-50 bg-black/35" onClick={() => setShowSuggestionSheet(false)}>
+      {/* ── Blocking analysis overlay ────────────────────────────────── */}
+      {isBlocking && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center"
+          style={{ backgroundColor: 'rgba(10,10,10,0.60)', backdropFilter: 'blur(3px)' }}
+          aria-live="polite"
+          aria-label="Analyzing your dish"
+        >
           <div
-            className="absolute bottom-0 left-0 right-0 mx-auto max-w-md rounded-t-3xl border border-neutral-200 bg-white p-5 shadow-xl transition-all duration-300"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">What does this look like?</p>
-            <h3 className="mt-1 text-lg font-semibold text-neutral-900">Suggested food categories</h3>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {aiCandidates.map((name, idx) => (
-                <button
-                  key={`${name}-sheet-${idx}`}
-                  onClick={() => handleSelectSuggestion(name)}
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-                    idx === 0
-                      ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
-                      : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                  }`}
-                >
-                  {name}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => setShowSuggestionSheet(false)}
-              className="mt-4 text-sm text-neutral-500 underline"
-            >
-              Not right? Choose another
-            </button>
-          </div>
+            className="mb-5 h-10 w-10 animate-spin rounded-full"
+            style={{ border: '2px solid rgba(255,255,255,0.15)', borderTopColor: 'rgba(255,255,255,0.9)' }}
+          />
+          <p className="text-base font-medium text-white tracking-wide">Analyzing your dish...</p>
+          <p className="mt-1.5 text-sm" style={{ color: 'rgba(255,255,255,0.55)' }}>This only takes a moment</p>
         </div>
       )}
     </main>
