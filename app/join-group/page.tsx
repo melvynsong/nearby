@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
+import { apiPath } from '@/lib/base-path'
 
 type SessionData = {
   memberId: string
@@ -66,7 +67,7 @@ export default function JoinGroupPage() {
 
     setLoading(true)
     try {
-      const response = await fetch('/api/groups/join', {
+      const response = await fetch(apiPath('/api/groups/join'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

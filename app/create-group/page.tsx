@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
 import GroupInviteActions from '@/components/GroupInviteActions'
+import { apiPath } from '@/lib/base-path'
 
 type Friend = {
   id: string   // local key only
@@ -89,7 +90,7 @@ export default function CreateGroup() {
 
     setSaving(true)
     try {
-      const response = await fetch('/api/groups/create', {
+      const response = await fetch(apiPath('/api/groups/create'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

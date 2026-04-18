@@ -13,6 +13,7 @@ import {
   isAdjustmentRecommended,
   upsertTransformInMap,
 } from '@/lib/image-transform'
+import { apiPath } from '@/lib/base-path'
 import { supabase } from '@/lib/supabase'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -221,7 +222,7 @@ export default function AddPlace() {
     try {
       const formData = new FormData()
       formData.append('image', file)
-      const res = await fetch('/api/food/suggest', { method: 'POST', body: formData })
+      const res = await fetch(apiPath('/api/food/suggest'), { method: 'POST', body: formData })
       const data = await res.json()
 
       if (data.error) {
@@ -296,7 +297,7 @@ export default function AddPlace() {
 
       setSearching(true)
       try {
-        const res = await fetch('/api/places/autocomplete', {
+        const res = await fetch(apiPath('/api/places/autocomplete'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: q, location: userCoords }),
@@ -330,7 +331,7 @@ export default function AddPlace() {
     setError('')
     setShowSaveErrorCard(false)
     try {
-      const res = await fetch('/api/places/details', {
+      const res = await fetch(apiPath('/api/places/details'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ placeId: prediction.placeId }),

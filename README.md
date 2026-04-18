@@ -16,6 +16,16 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Subpath Deployment
+
+To run Nearby under a subpath (for example `/nearby` behind a proxy), set:
+
+```bash
+NEXT_PUBLIC_BASE_PATH=/nearby
+```
+
+Then rebuild and redeploy. Leave this empty for root deployment.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
 import GroupInviteActions from '@/components/GroupInviteActions'
+import { apiPath } from '@/lib/base-path'
 import { supabase } from '@/lib/supabase'
 
 type Session = {
@@ -54,7 +55,7 @@ export default function SettingsPage() {
     setInviteLoading(true)
     setInviteError('')
     try {
-      const response = await fetch('/api/settings/group-invite', {
+      const response = await fetch(apiPath('/api/settings/group-invite'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ groupId, requesterUserId: userId }),
@@ -220,7 +221,7 @@ export default function SettingsPage() {
 
     setProfileSaving(true)
     try {
-      const response = await fetch('/api/settings/profile', {
+      const response = await fetch(apiPath('/api/settings/profile'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -265,7 +266,7 @@ export default function SettingsPage() {
 
     setGroupPasscodeSaving(true)
     try {
-      const response = await fetch('/api/settings/group-passcode', {
+      const response = await fetch(apiPath('/api/settings/group-passcode'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

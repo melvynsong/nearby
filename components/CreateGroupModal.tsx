@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import GroupInviteActions from '@/components/GroupInviteActions'
+import { apiPath } from '@/lib/base-path'
 
 type Friend = {
   id: string
@@ -87,7 +88,7 @@ export default function CreateGroupModal({
     setLoading(true)
 
     try {
-      const response = await fetch('/api/groups/create', {
+      const response = await fetch(apiPath('/api/groups/create'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

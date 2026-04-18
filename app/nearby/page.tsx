@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import TransformedImage from '@/components/TransformedImage'
+import { apiPath } from '@/lib/base-path'
 import { haversineDistanceKm, formatDistance, getInitials } from '@/lib/nearby-helpers'
 import CreateGroupModal, { type GroupEntry as ModalGroupEntry } from '@/components/CreateGroupModal'
 import AppHeader from '@/components/AppHeader'
@@ -237,7 +238,7 @@ export default function NearbyHome() {
 
   const resolveAreaName = useCallback(async (coords: { lat: number; lng: number }) => {
     try {
-      const res = await fetch('/api/location/reverse', {
+      const res = await fetch(apiPath('/api/location/reverse'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(coords),
