@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     const supabase = getServerSupabaseClient()
     const { data, error } = await supabase
       .from('users')
-      .select('id, personal_passcode')
+      .select('id, has_personal_passcode')
       .eq('id', userId)
       .maybeSingle()
 
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       profileExists: !!data?.id,
-      personalPasscodeSet: !!(typeof data?.personal_passcode === 'string' && data.personal_passcode.trim()),
+      personalPasscodeSet: data?.has_personal_passcode === true,
     })
   } catch (err) {
     console.error('[Nearby][API][OnboardingState] unexpected error:', err)

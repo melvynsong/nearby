@@ -318,7 +318,17 @@ export default function NearbyHome() {
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
-  const handleLogout = () => { localStorage.removeItem('nearby_session'); router.push(withBasePath('/')) }
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut()
+    } catch (err) {
+      console.warn('[Nearby][Nearby] signOut error (continuing):', err)
+    }
+    localStorage.removeItem('nearby_session')
+    localStorage.removeItem('nearby_register')
+    localStorage.removeItem('nearby_passcode_set')
+    router.push(withBasePath('/'))
+  }
   const toggleNotes = (placeId: string) => {
     setExpandedNotes((prev) => {
       const next = new Set(prev)
@@ -369,7 +379,7 @@ export default function NearbyHome() {
             </button>
 
             <button
-              onClick={handleLogout}
+              onClick={() => void handleLogout()}
               className="inline-flex h-8 items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50/70 px-3 text-xs font-medium text-rose-700 transition-all hover:bg-rose-100 active:scale-[0.98]"
             >
               <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">

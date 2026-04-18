@@ -227,10 +227,22 @@ function SettingsPage() {
 
     setPersonalPasscodeSaving(true)
     try {
+      // Get current Supabase session token for server-side identity verification.
+      const { data: sessionData } = await supabase.auth.getSession()
+      const accessToken = sessionData?.session?.access_token ?? null
+
+      if (!accessToken) {
+        setPersonalPasscodeError('Your session has expired. Please sign in again.')
+        return
+      }
+
       const response = await fetch(apiPath('/api/settings/personal-passcode'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: profile.userId, passcode: code }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ passcode: code }),
       })
 
       const result = await response.json()
@@ -306,6 +318,18 @@ function SettingsPage() {
     }
   }
 
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut()
+    } catch (err) {
+      console.warn('[Nearby][Settings] signOut error (continuing):', err)
+    }
+    localStorage.removeItem('nearby_session')
+    localStorage.removeItem('nearby_register')
+    localStorage.removeItem('nearby_passcode_set')
+    router.push(withBasePath('/'))
+  }
+
   const saveGroupPasscode = async () => {
     if (!session || !profile) return
 
@@ -349,7 +373,16 @@ function SettingsPage() {
 
   return (
     <main className="min-h-screen bg-[#f8f8f6] pb-20">
-      <AppHeader />
+      <AppHeader
+        right={
+          <button
+            onClick={() => void handleLogout()}
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 text-xs font-medium text-neutral-700 shadow-sm transition-all hover:bg-neutral-100 active:scale-[0.98]"
+          >
+            Log out
+          </button>
+        }
+      />
       <div className="mx-auto w-full max-w-md px-5 pt-5">
         <button
           onClick={() => router.push(withBasePath('/nearby'))}
