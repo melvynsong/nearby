@@ -10,6 +10,7 @@ import CreateGroupModal, { type GroupEntry as ModalGroupEntry } from '@/componen
 import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
 import { readTransformFromMap, type TransformMap } from '@/lib/image-transform'
+import { withBasePath } from '@/lib/base-path'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -169,7 +170,7 @@ export default function NearbyHome() {
 
   useEffect(() => {
     const raw = localStorage.getItem('nearby_session')
-    if (!raw) { router.replace('/'); return }
+    if (!raw) { router.replace(withBasePath('/')); return }
     const s: Session = JSON.parse(raw)
     setSession(s)
     const initial: GroupEntry = { memberId: s.memberId, memberName: s.memberName, groupId: s.groupId, groupName: s.groupName }
@@ -317,7 +318,7 @@ export default function NearbyHome() {
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
-  const handleLogout = () => { localStorage.removeItem('nearby_session'); router.push('/') }
+  const handleLogout = () => { localStorage.removeItem('nearby_session'); router.push(withBasePath('/')) }
   const toggleNotes = (placeId: string) => {
     setExpandedNotes((prev) => {
       const next = new Set(prev)
@@ -357,7 +358,7 @@ export default function NearbyHome() {
             </div>
 
             <button
-              onClick={() => router.push('/settings')}
+              onClick={() => router.push(withBasePath('/settings'))}
               className="inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 text-xs font-medium text-neutral-700 shadow-sm transition-all hover:bg-neutral-100 active:scale-[0.98]"
             >
               <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -423,7 +424,7 @@ export default function NearbyHome() {
                 <button
                   onClick={() => {
                     setShowGroupMenu(false)
-                    router.push('/join-group')
+                    router.push(withBasePath('/join-group'))
                   }}
                   className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 transition-colors"
                 >
@@ -506,7 +507,7 @@ export default function NearbyHome() {
               {selectedCategoryId ? 'Try a different filter or add a place.' : 'Start saving your favourite food spots'}
             </p>
             <button
-              onClick={() => router.push('/add-place')}
+              onClick={() => router.push(withBasePath('/add-place'))}
               className="mt-6 w-full rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-3 text-sm font-semibold text-white transition-colors"
             >
               Add first place
@@ -605,7 +606,7 @@ export default function NearbyHome() {
 
       {/* ── Floating add button ──────────────────────────────────────────────── */}
       <button
-        onClick={() => router.push('/add-place')}
+        onClick={() => router.push(withBasePath('/add-place'))}
         className="fixed bottom-6 right-5 rounded-full bg-teal-700 hover:bg-teal-800 active:bg-teal-900 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-colors"
       >
         + Add

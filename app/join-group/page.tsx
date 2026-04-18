@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
-import { apiPath } from '@/lib/base-path'
+import { apiPath, withBasePath } from '@/lib/base-path'
 
 type SessionData = {
   memberId: string
@@ -104,7 +104,7 @@ export default function JoinGroupPage() {
         allGroups: nextGroups,
       }))
 
-      router.push('/nearby')
+      router.push(withBasePath('/nearby'))
     } catch (joinError) {
       console.error('[Nearby][Join] Join group failed:', joinError)
       setError('We could not complete this just now. Please try again.')
@@ -122,9 +122,9 @@ export default function JoinGroupPage() {
             title="Please sign in first"
             message="Please create an account or sign in before joining a group."
             primaryLabel="Create Account"
-            onPrimary={() => router.push('/register')}
+            onPrimary={() => router.push(withBasePath('/register'))}
             secondaryLabel="Sign In"
-            onSecondary={() => router.push('/')}
+            onSecondary={() => router.push(withBasePath('/'))}
           />
         </div>
       </main>

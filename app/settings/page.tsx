@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
 import GroupInviteActions from '@/components/GroupInviteActions'
-import { apiPath } from '@/lib/base-path'
+import { apiPath, withBasePath } from '@/lib/base-path'
 import { supabase } from '@/lib/supabase'
 
 type Session = {
@@ -86,7 +86,7 @@ export default function SettingsPage() {
       const rawRegister = localStorage.getItem('nearby_register')
 
       if (!rawSession && !rawRegister) {
-        router.replace('/')
+        router.replace(withBasePath('/'))
         return
       }
 
@@ -298,7 +298,7 @@ export default function SettingsPage() {
       <AppHeader />
       <div className="mx-auto w-full max-w-md px-5 pt-5">
         <button
-          onClick={() => router.push('/nearby')}
+          onClick={() => router.push(withBasePath('/nearby'))}
           className="mb-5 text-sm text-neutral-500 transition-colors hover:text-neutral-800"
         >
           ← Back
@@ -316,7 +316,7 @@ export default function SettingsPage() {
               message="We could not load your settings just now. Please try again."
               onPrimary={() => void loadSettings()}
               secondaryLabel="Go Back"
-              onSecondary={() => router.push('/nearby')}
+              onSecondary={() => router.push(withBasePath('/nearby'))}
             />
           </div>
         ) : profile ? (

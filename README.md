@@ -18,15 +18,17 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## Subpath Deployment
 
-Nearby defaults to mounting under `/nearby`.
+Nearby defaults to exposing a public mount path at `/nearby`.
 
-To override the base path (for root deployment or another subpath), set:
+Internally the app still runs from `/`, while Next rewrites `/nearby/...` to the same routes. This keeps direct deployment and domain-proxy deployment aligned.
+
+To override the public mount path, set:
 
 ```bash
 NEXT_PUBLIC_BASE_PATH=/nearby
 ```
 
-Optional: if your proxy does not reliably forward `/_next` assets, set an explicit asset prefix:
+Optional: if your proxy does not reliably forward `/_next` assets, set an explicit absolute asset prefix:
 
 ```bash
 NEXT_PUBLIC_ASSET_PREFIX=https://nearby-nine.vercel.app

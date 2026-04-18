@@ -13,7 +13,7 @@ import {
   isAdjustmentRecommended,
   upsertTransformInMap,
 } from '@/lib/image-transform'
-import { apiPath } from '@/lib/base-path'
+import { apiPath, withBasePath } from '@/lib/base-path'
 import { supabase } from '@/lib/supabase'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -194,7 +194,7 @@ export default function AddPlace() {
 
   useEffect(() => {
     if (!session) {
-      router.replace('/')
+      router.replace(withBasePath('/'))
       return
     }
 
@@ -525,7 +525,7 @@ export default function AddPlace() {
         throw new Error('SAVE_CATEGORY_LINK_FAILED')
       }
 
-      router.push('/nearby')
+      router.push(withBasePath('/nearby'))
     } catch (err) {
       console.error('[Nearby][Save] Save food spot failed:', err)
       setError('We could not save your changes. Please try again.')

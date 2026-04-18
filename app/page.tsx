@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import ErrorState from '@/components/ErrorState'
 import AppHeader from '@/components/AppHeader'
+import NearbyHome from '@/app/nearby/page'
+import { withBasePath } from '@/lib/base-path'
 
 type GroupEntry = {
   memberId: string
@@ -28,11 +30,12 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [showLoginErrorCard, setShowLoginErrorCard] = useState(false)
   const [registerAccount, setRegisterAccount] = useState<RegisterData | null>(null)
+  const [hasSession, setHasSession] = useState(false)
 
   useEffect(() => {
     const session = localStorage.getItem('nearby_session')
     if (session) {
-      router.replace('/nearby')
+      setHasSession(true)
       return
     }
 
@@ -46,26 +49,30 @@ export default function Home() {
     }
   }, [router])
 
+  if (hasSession) {
+    return <NearbyHome />
+  }
+
   const handleCreateGroupCta = () => {
     const session = localStorage.getItem('nearby_session')
     const register = localStorage.getItem('nearby_register')
     if (session || register) {
-      router.push('/create-group')
+      router.push(withBasePath('/create-group'))
       return
     }
     localStorage.setItem('nearby_after_auth', 'create-group')
-    router.push('/register')
+    router.push(withBasePath('/register'))
   }
 
   const handleJoinGroupCta = () => {
     const session = localStorage.getItem('nearby_session')
     const register = localStorage.getItem('nearby_register')
     if (session || register) {
-      router.push('/join-group')
+      router.push(withBasePath('/join-group'))
       return
     }
     localStorage.setItem('nearby_after_auth', 'join-group')
-    router.push('/register')
+    router.push(withBasePath('/register'))
   }
 
   const handleEnter = async () => {
@@ -226,17 +233,17 @@ export default function Home() {
       const nextAction = localStorage.getItem('nearby_after_auth')
       if (nextAction === 'create-group') {
         localStorage.removeItem('nearby_after_auth')
-        router.push('/create-group')
+        router.push(withBasePath('/create-group'))
         return
       }
 
       if (nextAction === 'join-group') {
         localStorage.removeItem('nearby_after_auth')
-        router.push('/join-group')
+        router.push(withBasePath('/join-group'))
         return
       }
 
-      router.push('/nearby')
+      router.push(withBasePath('/nearby'))
     } catch (err) {
       console.error('[Nearby][API] Login failed:', err)
       setError('We could not complete this just now. Please try again.')
@@ -265,7 +272,7 @@ export default function Home() {
             Create a Group
           </button>
           <button
-            onClick={() => router.push('/add-place')}
+            onClick={() => router.push(withBasePath('/add-place'))}
             className="w-full rounded-xl border border-neutral-300 bg-white px-5 py-3 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
           >
             Add a Place
@@ -338,7 +345,7 @@ export default function Home() {
 
           <p className="text-center text-xs text-neutral-400">
             New here?{' '}
-            <button onClick={() => router.push('/register')} className="font-medium text-teal-700 hover:underline">
+            <button onClick={() => router.push(withBasePath('/register'))} className="font-medium text-teal-700 hover:underline">
               Create an account
             </button>
           </p>

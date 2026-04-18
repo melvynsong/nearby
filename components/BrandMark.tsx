@@ -27,7 +27,7 @@ export default function BrandMark({ clickable = true }: BrandMarkProps) {
   }
 
   return (
-    <Link href="/" className="group flex items-center gap-2 shrink-0">
+    <Link href={withBasePath('/')} className="group flex items-center gap-2 shrink-0">
       {content}
     </Link>
   )

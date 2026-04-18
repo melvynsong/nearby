@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import AppFooter from "@/components/AppFooter";
+import { withBasePath } from "@/lib/base-path";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,6 +17,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Nearby – Trusted food spots from your circle",
   description: "Discover and share trusted food spots with the people you trust.",
+  icons: {
+    icon: withBasePath('/favicon.ico'),
+  },
 };
 
 export default function RootLayout({

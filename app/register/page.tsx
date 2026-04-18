@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { phoneLast4 } from '@/lib/helpers'
 import AppHeader from '@/components/AppHeader'
+import { withBasePath } from '@/lib/base-path'
 
 export default function Register() {
   const router = useRouter()
@@ -74,7 +75,7 @@ export default function Register() {
           <p className="text-xl font-bold text-neutral-900">You&apos;re in!</p>
           <p className="mt-2 text-sm text-neutral-500">Account created. You can now create or join a group.</p>
           <button
-            onClick={() => router.push('/')}
+            onClick={() => router.push(withBasePath('/'))}
             className="mt-6 w-full rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-3 text-sm font-semibold text-white transition-colors"
           >
             Continue
@@ -137,7 +138,7 @@ export default function Register() {
 
           <p className="text-center text-xs text-neutral-400">
             Already registered?{' '}
-            <button onClick={() => router.push('/')} className="font-medium text-teal-700 hover:underline">
+            <button onClick={() => router.push(withBasePath('/'))} className="font-medium text-teal-700 hover:underline">
               Log in
             </button>
           </p>

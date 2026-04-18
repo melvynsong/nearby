@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
 import GroupInviteActions from '@/components/GroupInviteActions'
-import { apiPath } from '@/lib/base-path'
+import { apiPath, withBasePath } from '@/lib/base-path'
 
 type Friend = {
   id: string   // local key only
@@ -148,9 +148,9 @@ export default function CreateGroup() {
             title="Please sign in first"
             message="Please create an account or sign in before creating a group."
             primaryLabel="Create Account"
-            onPrimary={() => router.push('/register')}
+            onPrimary={() => router.push(withBasePath('/register'))}
             secondaryLabel="Sign In"
-            onSecondary={() => router.push('/')}
+            onSecondary={() => router.push(withBasePath('/'))}
           />
         </div>
       </main>
@@ -177,7 +177,7 @@ export default function CreateGroup() {
             />
           </div>
           <button
-            onClick={() => router.push('/nearby')}
+            onClick={() => router.push(withBasePath('/nearby'))}
             className="mt-6 w-full rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-3 text-sm font-semibold text-white transition-colors"
           >
             Go to Nearby
