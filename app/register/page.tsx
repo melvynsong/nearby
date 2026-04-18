@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { phoneLast4 } from '@/lib/helpers'
 import AppHeader from '@/components/AppHeader'
-import { apiPath, withBasePath } from '@/lib/base-path'
+import { supabase } from '@/lib/supabase'
+import { withBasePath } from '@/lib/base-path'
 
 export default function Register() {
   const router = useRouter()
@@ -13,6 +14,35 @@ export default function Register() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
+
+  const waitForAuthenticatedUser = async (timeoutMs = 5000) => {
+    return new Promise<string | null>((resolve) => {
+      let settled = false
+
+      const timeout = setTimeout(() => {
+        if (settled) return
+        settled = true
+        subscription.unsubscribe()
+        console.warn('[Nearby][Register] Timed out waiting for auth state change')
+        resolve(null)
+      }, timeoutMs)
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log('[Nearby][Register] onAuthStateChange event:', event, {
+          hasSession: !!session,
+          sessionUserId: session?.user?.id ?? null,
+        })
+
+        const userId = session?.user?.id ?? null
+        if (!userId || settled) return
+
+        settled = true
+        clearTimeout(timeout)
+        subscription.unsubscribe()
+        resolve(userId)
+      })
+    })
+  }
 
   const handleRegister = async () => {
     setError('')
@@ -26,28 +56,95 @@ export default function Register() {
     setSaving(true)
 
     try {
-      const response = await fetch(apiPath('/api/register'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fullName: name,
-          phoneNumber: ph,
-        }),
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      console.log('[Nearby][Register] getSession result:', {
+        hasSession: !!sessionData?.session,
+        sessionUserId: sessionData?.session?.user?.id ?? null,
+        error: sessionError,
       })
 
-      const result = await response.json()
-      if (!response.ok || !result?.ok || !result?.userId) {
-        console.error('[Nearby][Save] Register API failed:', result)
-        setError(result?.message ?? 'We could not save your changes. Please try again.')
+      let authUserId = sessionData?.session?.user?.id ?? null
+
+      if (!authUserId) {
+        const signUpResult = await supabase.auth.signInAnonymously({
+          options: {
+            data: {
+              full_name: name,
+              phone_number: ph,
+            },
+          },
+        })
+
+        console.log('[Nearby][Register] signInAnonymously response:', {
+          userId: signUpResult.data.user?.id ?? null,
+          hasSession: !!signUpResult.data.session,
+          error: signUpResult.error,
+        })
+
+        if (signUpResult.error) {
+          setError('We could not create your account session. Please try again.')
+          return
+        }
+
+        authUserId = signUpResult.data.user?.id ?? null
+      }
+
+      if (!authUserId) {
+        const { data: userData, error: userError } = await supabase.auth.getUser()
+        console.log('[Nearby][Register] getUser result:', {
+          userId: userData.user?.id ?? null,
+          error: userError,
+        })
+        authUserId = userData.user?.id ?? null
+      }
+
+      if (!authUserId) {
+        authUserId = await waitForAuthenticatedUser()
+      }
+
+      if (!authUserId) {
+        setError('Please complete account confirmation, then try again.')
         return
       }
 
+      const payload = {
+        id: authUserId,
+        full_name: name,
+        phone_number: ph,
+        phone_last4: last4,
+      }
+
+      console.log('[Nearby][Register] Insert payload:', payload)
+      console.log('[Nearby][Register] payload.id matches auth user id:', payload.id === authUserId)
+
+      const { data: upserted, error: upsertError } = await supabase
+        .from('users')
+        .upsert(payload, { onConflict: 'id' })
+        .select('id, full_name, phone_number, phone_last4')
+        .single()
+
+      if (upsertError || !upserted?.id) {
+        console.error('[Nearby][Register] User insert failed:', {
+          error: upsertError,
+          payload,
+          authUserId,
+        })
+        setError('We could not save your changes. Please try again.')
+        return
+      }
+
+      console.log('[Nearby][Register] User insert success:', {
+        userId: upserted.id,
+        fullName: upserted.full_name,
+        phoneNumber: upserted.phone_number,
+      })
+
       // Persist registration info so create-group can use it
       localStorage.setItem('nearby_register', JSON.stringify({
-        userId: result.userId,
-        userName: result.fullName ?? name,
-        phone4: result.phoneLast4 ?? last4,
-        phone: result.phoneNumber ?? ph,
+        userId: upserted.id,
+        userName: upserted.full_name ?? name,
+        phone4: upserted.phone_last4 ?? last4,
+        phone: upserted.phone_number ?? ph,
       }))
       setDone(true)
     } catch (err) {
