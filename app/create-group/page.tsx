@@ -2,20 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { phoneLast4, slugify } from '@/lib/helpers'
 import AppHeader from '@/components/AppHeader'
+import ErrorState from '@/components/ErrorState'
 
 type Friend = {
   id: string   // local key only
   name: string
-  phone: string
-}
-
-type RegisterData = {
-  userId: string
-  userName: string
-  phone4: string
   phone: string
 }
 
@@ -28,48 +20,28 @@ type SessionData = {
 
 export default function CreateGroup() {
   const router = useRouter()
-  const [register, setRegister] = useState<RegisterData | null>(null)
+  const [session, setSession] = useState<SessionData | null>(null)
   const [groupName, setGroupName] = useState('')
   const [passcode, setPasscode] = useState('')
   const [friends, setFriends] = useState<Friend[]>([{ id: '1', name: '', phone: '' }])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
+  const [gated, setGated] = useState(false)
 
   useEffect(() => {
-    const loadCreator = async () => {
-      const rawRegister = localStorage.getItem('nearby_register')
-      if (rawRegister) {
-        setRegister(JSON.parse(rawRegister))
+    const loadSession = () => {
+      const rawSession = localStorage.getItem('nearby_session')
+      if (!rawSession) {
+        localStorage.setItem('nearby_after_auth', 'create-group')
+        setGated(true)
         return
       }
 
-      const rawSession = localStorage.getItem('nearby_session')
-      if (!rawSession) return
-
-      const session: SessionData = JSON.parse(rawSession)
-
-      const { data: member } = await supabase
-        .from('members')
-        .select('id, user_id, display_name, phone_last4, users ( phone_number )')
-        .eq('id', session.memberId)
-        .maybeSingle()
-
-      const userId = member?.user_id as string | undefined
-      const phone = (member?.users as { phone_number?: string } | null)?.phone_number
-      const phone4 = (member?.phone_last4 as string | null) ?? (phone ? phoneLast4(phone) : null)
-
-      if (userId && phone && phone4) {
-        setRegister({
-          userId,
-          userName: (member?.display_name as string | null) ?? session.memberName,
-          phone,
-          phone4,
-        })
-      }
+      setSession(JSON.parse(rawSession) as SessionData)
     }
 
-    loadCreator()
+    loadSession()
   }, [])
 
   const addFriend = () => {
@@ -84,112 +56,35 @@ export default function CreateGroup() {
     setFriends((prev) => prev.map((f) => (f.id === id ? { ...f, [field]: value } : f)))
   }
 
-  // Upsert a user by phone number, return their id
-  const upsertUser = async (fullName: string, phone: string): Promise<string> => {
-    const last4 = phoneLast4(phone)
-    const { data: existing } = await supabase
-      .from('users')
-      .select('id')
-      .eq('phone_number', phone)
-      .maybeSingle()
-
-    if (existing) return existing.id
-
-    const { data: inserted, error } = await supabase
-      .from('users')
-      .insert({ full_name: fullName, phone_number: phone, phone_last4: last4 })
-      .select('id')
-      .single()
-
-    if (error || !inserted) {
-      console.error('[Nearby][Save] Create user failed:', error)
-      throw new Error('CREATE_USER_FAILED')
-    }
-    return inserted.id
-  }
-
-  // Upsert a member (user in a group), return member id
-  const upsertMember = async (userId: string, displayName: string, phone4: string, groupId: string): Promise<string> => {
-    // Check if member already exists for this user+group
-    const { data: existing } = await supabase
-      .from('members')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('group_id', groupId)
-      .maybeSingle()
-
-    if (existing) return existing.id
-
-    const { data: inserted, error } = await supabase
-      .from('members')
-      .insert({ display_name: displayName, group_id: groupId, phone_last4: phone4, user_id: userId })
-      .select('id')
-      .single()
-
-    if (error || !inserted) {
-      console.error('[Nearby][Save] Create member failed:', error)
-      throw new Error('CREATE_MEMBER_FAILED')
-    }
-    return inserted.id
-  }
-
-  const upsertGroupMembership = async (userId: string, groupId: string, memberId: string) => {
-    await supabase
-      .from('group_memberships')
-      .upsert({ user_id: userId, group_id: groupId, member_id: memberId }, { onConflict: 'user_id,group_id' })
-  }
-
   const handleCreate = async () => {
     setError('')
     const name = groupName.trim()
     if (!name) { setError('Please enter a group name.'); return }
     if (!passcode.trim()) { setError('Please set a group passcode.'); return }
-    if (!register) { setError('Registration data missing. Please register first.'); return }
+    if (!session) {
+      setError('Please create an account or sign in before creating a group.')
+      return
+    }
 
     setSaving(true)
     try {
-      // 1. Create the group
-      const slug = slugify(name)
-      let group: { id: string } | null = null
-      let groupErr: { message?: string } | null = null
+      const response = await fetch('/api/groups/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionMemberId: session.memberId,
+          fallbackMemberName: session.memberName,
+          groupName: name,
+          passcode: passcode.trim(),
+          friends,
+        }),
+      })
 
-      const firstAttempt = await supabase
-        .from('groups')
-        .insert({ name, slug, access_code: passcode.trim(), created_by_user_id: register.userId })
-        .select('id')
-        .single()
-
-      group = firstAttempt.data
-      groupErr = firstAttempt.error
-
-      if (groupErr?.message?.includes('created_by_user_id')) {
-        const fallbackAttempt = await supabase
-          .from('groups')
-          .insert({ name, slug, access_code: passcode.trim() })
-          .select('id')
-          .single()
-        group = fallbackAttempt.data
-        groupErr = fallbackAttempt.error
-      }
-
-      if (groupErr || !group) {
-        console.error('[Nearby][Save] Create group failed:', groupErr)
-        throw new Error('CREATE_GROUP_FAILED')
-      }
-      const groupId = group.id
-
-      // 2. Add creator as member + group membership
-      const creatorMemberId = await upsertMember(register.userId, register.userName, register.phone4, groupId)
-      await upsertGroupMembership(register.userId, groupId, creatorMemberId)
-
-      // 3. Add each valid friend
-      const validFriends = friends.filter((f) => f.name.trim() && f.phone.trim())
-      for (const friend of validFriends) {
-        const friendPhone = friend.phone.trim()
-        const friendLast4 = phoneLast4(friendPhone)
-        const friendUserId = await upsertUser(friend.name.trim(), friendPhone)
-        const friendMemberId = await upsertMember(friendUserId, friend.name.trim(), friendLast4, groupId)
-        await upsertGroupMembership(friendUserId, groupId, friendMemberId)
+      const result = await response.json()
+      if (!response.ok || !result?.ok) {
+        setError(result?.message ?? 'We could not save your changes. Please try again.')
+        setSaving(false)
+        return
       }
 
       // Keep logged-in session aware of the new group immediately.
@@ -197,10 +92,15 @@ export default function CreateGroup() {
       if (rawSession) {
         const current = JSON.parse(rawSession)
         const existingGroups = Array.isArray(current.allGroups) ? current.allGroups : []
-        const hasGroup = existingGroups.some((g: { groupId: string }) => g.groupId === groupId)
+        const hasGroup = existingGroups.some((g: { groupId: string }) => g.groupId === result.groupId)
         const nextGroups = hasGroup
           ? existingGroups
-          : [...existingGroups, { memberId: creatorMemberId, memberName: register.userName, groupId, groupName: name }]
+          : [...existingGroups, {
+              memberId: result.memberId,
+              memberName: result.memberName,
+              groupId: result.groupId,
+              groupName: result.groupName,
+            }]
 
         localStorage.setItem('nearby_session', JSON.stringify({ ...current, allGroups: nextGroups }))
       }
@@ -212,6 +112,24 @@ export default function CreateGroup() {
     } finally {
       setSaving(false)
     }
+  }
+
+  if (gated) {
+    return (
+      <main className="min-h-screen bg-[#f8f8f6]">
+        <AppHeader />
+        <div className="mx-auto max-w-sm px-5 pt-10">
+          <ErrorState
+            title="Please sign in first"
+            message="Please create an account or sign in before creating a group."
+            primaryLabel="Create Account"
+            onPrimary={() => router.push('/register')}
+            secondaryLabel="Sign In"
+            onSecondary={() => router.push('/')}
+          />
+        </div>
+      </main>
+    )
   }
 
   if (done) {

@@ -1,8 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
-import { phoneLast4, slugify } from '@/lib/helpers'
 
 type Friend = {
   id: string
@@ -65,76 +63,6 @@ export default function CreateGroupModal({
     onClose()
   }
 
-  const upsertUser = async (fullName: string, phone: string): Promise<string> => {
-    const cleanedPhone = phone.trim()
-    const last4 = phoneLast4(cleanedPhone)
-
-    const { data: existing } = await supabase
-      .from('users')
-      .select('id')
-      .eq('phone_number', cleanedPhone)
-      .maybeSingle()
-
-    if (existing?.id) return existing.id
-
-    const { data: inserted, error: insertError } = await supabase
-      .from('users')
-      .insert({
-        full_name: fullName,
-        phone_number: cleanedPhone,
-        phone_last4: last4,
-      })
-      .select('id')
-      .single()
-
-    if (insertError || !inserted?.id) {
-      console.error('[Nearby][Save] Modal create user failed:', insertError)
-      throw new Error('CREATE_USER_FAILED')
-    }
-
-    return inserted.id
-  }
-
-  const upsertMember = async (
-    userId: string,
-    displayName: string,
-    phone4: string,
-    groupId: string,
-  ): Promise<string> => {
-    const { data: existing } = await supabase
-      .from('members')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('group_id', groupId)
-      .maybeSingle()
-
-    if (existing?.id) return existing.id
-
-    const { data: inserted, error: insertError } = await supabase
-      .from('members')
-      .insert({
-        display_name: displayName,
-        group_id: groupId,
-        phone_last4: phone4,
-        user_id: userId,
-      })
-      .select('id')
-      .single()
-
-    if (insertError || !inserted?.id) {
-      console.error('[Nearby][Save] Modal create member failed:', insertError)
-      throw new Error('CREATE_MEMBER_FAILED')
-    }
-
-    return inserted.id
-  }
-
-  const upsertGroupMembership = async (userId: string, groupId: string, memberId: string) => {
-    await supabase
-      .from('group_memberships')
-      .upsert({ user_id: userId, group_id: groupId, member_id: memberId }, { onConflict: 'user_id,group_id' })
-  }
-
   const handleCreate = async () => {
     setError('')
 
@@ -154,69 +82,30 @@ export default function CreateGroupModal({
     setLoading(true)
 
     try {
-      const { data: creatorMember, error: creatorError } = await supabase
-        .from('members')
-        .select('id, user_id, display_name, phone_last4, users ( phone_number )')
-        .eq('id', sessionMemberId)
-        .maybeSingle()
+      const response = await fetch('/api/groups/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionMemberId,
+          fallbackMemberName,
+          groupName: name,
+          passcode: accessCode,
+          friends,
+        }),
+      })
 
-      if (creatorError || !creatorMember?.user_id) {
-        throw new Error('Could not resolve your account details. Please log in again.')
-      }
-
-      const creatorPhone = (creatorMember.users as { phone_number?: string } | null)?.phone_number
-      const creatorPhone4 = (creatorMember.phone_last4 as string | null) ?? (creatorPhone ? phoneLast4(creatorPhone) : null)
-      if (!creatorPhone4) throw new Error('Creator phone details missing.')
-
-      const creatorName = (creatorMember.display_name as string | null) ?? fallbackMemberName
-      const slug = slugify(name)
-
-      let group: { id: string } | null = null
-      let groupError: { message?: string } | null = null
-
-      const firstAttempt = await supabase
-        .from('groups')
-        .insert({ name, slug, access_code: accessCode, created_by_user_id: creatorMember.user_id as string })
-        .select('id')
-        .single()
-
-      group = firstAttempt.data
-      groupError = firstAttempt.error
-
-      if (groupError?.message?.includes('created_by_user_id')) {
-        const fallbackAttempt = await supabase
-          .from('groups')
-          .insert({ name, slug, access_code: accessCode })
-          .select('id')
-          .single()
-        group = fallbackAttempt.data
-        groupError = fallbackAttempt.error
-      }
-
-      if (groupError || !group?.id) {
-        console.error('[Nearby][Save] Modal create group failed:', groupError)
-        throw new Error('CREATE_GROUP_FAILED')
-      }
-
-      const groupId = group.id
-
-      const creatorMemberId = await upsertMember(creatorMember.user_id as string, creatorName, creatorPhone4, groupId)
-      await upsertGroupMembership(creatorMember.user_id as string, groupId, creatorMemberId)
-
-      const validFriends = friends.filter((friend) => friend.name.trim() && friend.phone.trim())
-      for (const friend of validFriends) {
-        const friendPhone = friend.phone.trim()
-        const friendName = friend.name.trim()
-        const friendUserId = await upsertUser(friendName, friendPhone)
-        const friendMemberId = await upsertMember(friendUserId, friendName, phoneLast4(friendPhone), groupId)
-        await upsertGroupMembership(friendUserId, groupId, friendMemberId)
+      const result = await response.json()
+      if (!response.ok || !result?.ok) {
+        setError(result?.message ?? 'We could not save your changes. Please try again.')
+        setLoading(false)
+        return
       }
 
       onGroupCreated({
-        memberId: creatorMemberId,
-        memberName: creatorName,
-        groupId,
-        groupName: name,
+        memberId: result.memberId,
+        memberName: result.memberName,
+        groupId: result.groupId,
+        groupName: result.groupName,
       })
 
       close()

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import ErrorState from '@/components/ErrorState'
+import AppHeader from '@/components/AppHeader'
 
 type GroupEntry = {
   memberId: string
@@ -24,6 +25,16 @@ export default function Home() {
     const session = localStorage.getItem('nearby_session')
     if (session) router.replace('/nearby')
   }, [router])
+
+  const handleCreateGroupCta = () => {
+    const session = localStorage.getItem('nearby_session')
+    if (session) {
+      router.push('/create-group')
+      return
+    }
+    localStorage.setItem('nearby_after_auth', 'create-group')
+    router.push('/register')
+  }
 
   const handleEnter = async () => {
     setError('')
@@ -122,6 +133,14 @@ export default function Home() {
         groupName: matched.groupName,
         allGroups,
       }))
+
+      const nextAction = localStorage.getItem('nearby_after_auth')
+      if (nextAction === 'create-group') {
+        localStorage.removeItem('nearby_after_auth')
+        router.push('/create-group')
+        return
+      }
+
       router.push('/nearby')
     } catch (err) {
       console.error('[Nearby][API] Login failed:', err)
@@ -132,15 +151,9 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f8f8f6] flex flex-col items-center justify-center px-5 py-12">
-      {/* Logo */}
-      <div className="mb-8 flex flex-col items-center gap-3">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/nearby_logo.png" alt="Nearby" className="h-10 w-auto" />
-        <span className="beta-pulse inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-600 dark:bg-orange-900/30 dark:text-orange-300">
-          Beta
-        </span>
-      </div>
+    <main className="min-h-screen bg-[#f8f8f6]">
+      <AppHeader />
+      <div className="flex flex-col items-center justify-center px-5 py-10">
 
       <section className="mb-8 w-full max-w-xl text-center">
         <h1 className="text-3xl font-bold tracking-tight text-neutral-900 sm:text-4xl">
@@ -151,7 +164,7 @@ export default function Home() {
         </p>
         <div className="mx-auto mt-5 flex w-full max-w-sm flex-col gap-2 sm:flex-row">
           <button
-            onClick={() => router.push('/create-group')}
+            onClick={handleCreateGroupCta}
             className="w-full rounded-xl bg-teal-700 px-5 py-3 text-sm font-medium text-white transition-transform hover:scale-[1.02] hover:bg-teal-800 active:scale-[0.99]"
           >
             Create a Group
@@ -223,6 +236,7 @@ export default function Home() {
             </button>
           </p>
         </div>
+      </div>
       </div>
     </main>
   )

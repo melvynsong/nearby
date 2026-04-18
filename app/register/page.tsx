@@ -82,13 +82,13 @@ export default function Register() {
           </div>
           <p className="text-xl font-bold text-neutral-900">You&apos;re in!</p>
           <p className="mt-2 text-sm text-neutral-500">
-            Account created. Next, create your group and add friends.
+            Account created. Next, sign in to continue.
           </p>
           <button
-            onClick={() => router.push('/create-group')}
+            onClick={() => router.push('/')}
             className="mt-6 w-full rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-3 text-sm font-semibold text-white transition-colors"
           >
-            Create a group
+            Go to sign in
           </button>
           <button
             onClick={() => router.push('/')}
