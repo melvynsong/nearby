@@ -70,21 +70,24 @@ export default function Register() {
 
   if (done) {
     return (
-      <main className="min-h-screen bg-neutral-50 flex items-center justify-center p-6">
-        <div className="w-full max-w-md rounded-2xl bg-white border border-neutral-200 p-8 shadow-sm text-center">
-          <p className="text-2xl font-semibold text-neutral-900">You're in ✓</p>
+      <main className="min-h-screen bg-[#f8f8f6] flex items-center justify-center px-5 py-12">
+        <div className="w-full max-w-sm rounded-2xl bg-white border border-neutral-200 p-7 shadow-sm text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-teal-50">
+            <span className="text-2xl">✓</span>
+          </div>
+          <p className="text-xl font-bold text-neutral-900">You&apos;re in!</p>
           <p className="mt-2 text-sm text-neutral-500">
             Account created. Next, create your group and add friends.
           </p>
           <button
             onClick={() => router.push('/create-group')}
-            className="mt-6 w-full rounded-xl bg-neutral-900 px-4 py-3 text-sm font-medium text-white"
+            className="mt-6 w-full rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-3 text-sm font-semibold text-white transition-colors"
           >
             Create a group
           </button>
           <button
             onClick={() => router.push('/')}
-            className="mt-3 w-full rounded-xl border border-neutral-200 px-4 py-3 text-sm font-medium text-neutral-600"
+            className="mt-3 w-full rounded-xl border border-neutral-200 hover:bg-neutral-50 px-4 py-3 text-sm font-medium text-neutral-600 transition-colors"
           >
             Go to login
           </button>
@@ -94,16 +97,16 @@ export default function Register() {
   }
 
   return (
-    <main className="min-h-screen bg-neutral-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-2xl bg-white border border-neutral-200 p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold text-neutral-900">Create account</h1>
+    <main className="min-h-screen bg-[#f8f8f6] flex items-center justify-center px-5 py-12">
+      <div className="w-full max-w-sm rounded-2xl bg-white border border-neutral-200 p-7 shadow-sm">
+        <h1 className="text-xl font-bold text-neutral-900">Create account</h1>
         <p className="mt-1 text-sm text-neutral-500">
           Join Nearby and start saving food spots with your circle.
         </p>
 
-        <div className="mt-8 space-y-5">
+        <div className="mt-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-neutral-800 mb-2">
+            <label className="block text-sm font-medium text-neutral-700 mb-1.5">
               Your full name
             </label>
             <input
@@ -111,28 +114,28 @@ export default function Register() {
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="e.g. Melvyn Song"
-              className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-neutral-500"
+              className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-neutral-800 mb-2">
-              Personal passcode (optional)
+            <label className="block text-sm font-medium text-neutral-700 mb-1.5">
+              Personal passcode <span className="font-normal text-neutral-400">(optional)</span>
             </label>
             <input
               type="password"
               value={personalPasscode}
               onChange={(e) => setPersonalPasscode(e.target.value)}
               placeholder="Use this for quick return access"
-              className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-neutral-500"
+              className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
             />
             <p className="mt-1.5 text-xs text-neutral-400">
-              You can still join using your group's passcode.
+              You can still join using your group&apos;s passcode.
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-neutral-800 mb-2">
+            <label className="block text-sm font-medium text-neutral-700 mb-1.5">
               Phone number
             </label>
             <input
@@ -140,7 +143,7 @@ export default function Register() {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="e.g. +65 9123 4567"
-              className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-neutral-500"
+              className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
             />
             <p className="mt-1.5 text-xs text-neutral-400">
               Used so friends can add you by phone number.
@@ -152,14 +155,14 @@ export default function Register() {
           <button
             onClick={handleRegister}
             disabled={saving}
-            className="w-full rounded-xl bg-neutral-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
+            className="w-full rounded-xl bg-teal-700 hover:bg-teal-800 active:bg-teal-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 transition-colors"
           >
             {saving ? 'Creating account…' : 'Create account'}
           </button>
 
           <p className="text-center text-xs text-neutral-400">
             Already registered?{' '}
-            <button onClick={() => router.push('/')} className="underline text-neutral-600">
+            <button onClick={() => router.push('/')} className="font-medium text-teal-700 hover:underline">
               Log in
             </button>
           </p>

@@ -189,15 +189,18 @@ export default function CreateGroup() {
 
   if (done) {
     return (
-      <main className="min-h-screen bg-neutral-50 flex items-center justify-center p-6">
-        <div className="w-full max-w-md rounded-2xl bg-white border border-neutral-200 p-8 shadow-sm text-center">
-          <p className="text-2xl font-semibold text-neutral-900">Group created ✓</p>
+      <main className="min-h-screen bg-[#f8f8f6] flex items-center justify-center px-5 py-12">
+        <div className="w-full max-w-sm rounded-2xl bg-white border border-neutral-200 p-7 shadow-sm text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-teal-50">
+            <span className="text-2xl">✓</span>
+          </div>
+          <p className="text-xl font-bold text-neutral-900">Group created!</p>
           <p className="mt-2 text-sm text-neutral-500">
-            Your circle is ready. Start saving food spots in this new group.
+            Your circle is ready. Start saving food spots together.
           </p>
           <button
             onClick={() => router.push('/nearby')}
-            className="mt-6 w-full rounded-xl bg-neutral-900 px-4 py-3 text-sm font-medium text-white"
+            className="mt-6 w-full rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-3 text-sm font-semibold text-white transition-colors"
           >
             Go to Nearby
           </button>
@@ -207,25 +210,25 @@ export default function CreateGroup() {
   }
 
   return (
-    <main className="min-h-screen bg-neutral-50 p-6">
-      <div className="max-w-md mx-auto">
+    <main className="min-h-screen bg-[#f8f8f6] px-5 py-8 pb-20">
+      <div className="max-w-sm mx-auto">
         <button
           onClick={() => router.back()}
-          className="mb-6 text-sm text-neutral-500 hover:text-neutral-800"
+          className="mb-5 text-sm text-neutral-500 hover:text-neutral-800 transition-colors"
         >
           ← Back
         </button>
 
-        <h1 className="text-2xl font-semibold text-neutral-900 mb-1">Create a group</h1>
-        <p className="text-sm text-neutral-500 mb-6">
+        <h1 className="text-xl font-bold text-neutral-900 mb-1">Create a group</h1>
+        <p className="text-sm text-neutral-500 mb-5">
           Set up your circle. Friends you add will be able to log in and see your saved spots.
         </p>
 
-        <div className="space-y-5">
+        <div className="space-y-4">
           {/* Group details */}
           <div className="rounded-2xl bg-white border border-neutral-200 p-5 shadow-sm space-y-4">
             <div>
-              <label className="block text-sm font-medium text-neutral-800 mb-2">
+              <label className="block text-sm font-medium text-neutral-700 mb-1.5">
                 Group name
               </label>
               <input
@@ -233,20 +236,20 @@ export default function CreateGroup() {
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
                 placeholder="e.g. Friday Makan Crew"
-                className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-neutral-500"
+                className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-neutral-800 mb-2">
+              <label className="block text-sm font-medium text-neutral-700 mb-1.5">
                 Group passcode
               </label>
               <input
                 type="text"
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
-                placeholder="Share this with your friends to join"
-                className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-neutral-500"
+                placeholder="Share this with friends to join"
+                className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
               />
               <p className="mt-1.5 text-xs text-neutral-400">
                 Friends use this passcode + their last 4 digits to log in.
@@ -256,7 +259,7 @@ export default function CreateGroup() {
 
           {/* Friends */}
           <div className="rounded-2xl bg-white border border-neutral-200 p-5 shadow-sm">
-            <p className="text-sm font-medium text-neutral-800 mb-4">Add friends</p>
+            <p className="text-sm font-medium text-neutral-700 mb-3">Add friends</p>
             <div className="space-y-3">
               {friends.map((friend, idx) => (
                 <div key={friend.id} className="flex items-start gap-2">
@@ -266,14 +269,14 @@ export default function CreateGroup() {
                       value={friend.name}
                       onChange={(e) => updateFriend(friend.id, 'name', e.target.value)}
                       placeholder={`Friend ${idx + 1} name`}
-                      className="w-full rounded-xl border border-neutral-300 px-3 py-2.5 text-sm outline-none focus:border-neutral-500"
+                      className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
                     />
                     <input
                       type="tel"
                       value={friend.phone}
                       onChange={(e) => updateFriend(friend.id, 'phone', e.target.value)}
                       placeholder="Phone number"
-                      className="w-full rounded-xl border border-neutral-300 px-3 py-2.5 text-sm outline-none focus:border-neutral-500"
+                      className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
                     />
                   </div>
                   {friends.length > 1 && (
@@ -290,7 +293,7 @@ export default function CreateGroup() {
 
             <button
               onClick={addFriend}
-              className="mt-4 text-sm text-neutral-500 hover:text-neutral-800 underline"
+              className="mt-4 text-sm font-medium text-teal-700 hover:underline"
             >
               + Add another friend
             </button>
@@ -301,7 +304,7 @@ export default function CreateGroup() {
           <button
             onClick={handleCreate}
             disabled={saving}
-            className="w-full rounded-xl bg-neutral-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
+            className="w-full rounded-xl bg-teal-700 hover:bg-teal-800 active:bg-teal-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 transition-colors"
           >
             {saving ? 'Creating group…' : 'Create group'}
           </button>

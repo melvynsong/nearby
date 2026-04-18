@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { haversineDistanceKm, formatDistance, getInitials } from '@/lib/nearby-helpers'
 import CreateGroupModal, { type GroupEntry as ModalGroupEntry } from '@/components/CreateGroupModal'
+import AppHeader from '@/components/AppHeader'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -329,28 +330,28 @@ export default function NearbyHome() {
   const allGroups = session.allGroups ?? []
 
   return (
-    <main className="min-h-screen bg-neutral-50 pb-24">
+    <main className="min-h-screen bg-[#f8f8f6] pb-24">
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="px-5 pt-8 pb-3 max-w-md mx-auto">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-neutral-900">Nearby</h1>
-            <p className="mt-0.5 text-sm text-neutral-500">Trusted food spots from your circle</p>
+      <AppHeader
+        right={
+          <div className="flex flex-col items-end gap-0.5">
+            <p className="text-xs font-medium text-neutral-700 leading-none">{session.memberName}</p>
+            <button onClick={handleLogout} className="text-[11px] text-neutral-400 hover:text-neutral-600 transition-colors">
+              Logout
+            </button>
           </div>
-          <div className="flex flex-col items-end gap-1 pt-1">
-            <p className="text-xs text-neutral-500">{session.memberName}</p>
-            <button onClick={handleLogout} className="text-xs text-neutral-400 underline">Logout</button>
-          </div>
-        </div>
+        }
+      />
 
-        <div className="relative mt-4">
+      <div className="px-5 pt-5 pb-3 max-w-md mx-auto">
+        <div className="relative">
           <button
             onClick={() => setShowGroupMenu((prev) => !prev)}
-            className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-100"
+            className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-100 shadow-sm"
           >
             <span>{activeGroup.groupName}</span>
-            <span className="text-neutral-500">▾</span>
+            <span className="text-neutral-400">▾</span>
           </button>
 
           {showGroupMenu && (
@@ -362,7 +363,7 @@ export default function NearbyHome() {
                     onClick={() => switchGroup(g)}
                     className={`w-full px-3 py-2 text-left text-sm transition-colors ${
                       activeGroup.groupId === g.groupId
-                        ? 'bg-neutral-100 text-neutral-900'
+                        ? 'bg-teal-50 text-teal-700 font-medium'
                         : 'text-neutral-600 hover:bg-neutral-50'
                     }`}
                   >
@@ -377,7 +378,7 @@ export default function NearbyHome() {
                     setShowGroupMenu(false)
                     setShowCreateGroupModal(true)
                   }}
-                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 transition-colors"
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-teal-700 hover:bg-teal-50 transition-colors font-medium"
                 >
                   + Create new group
                 </button>
@@ -400,13 +401,13 @@ export default function NearbyHome() {
           {locationStatus === 'idle' && (
             <div className="flex items-center gap-3">
               <p className="text-xs text-neutral-400">{subtitle.text}</p>
-              <button onClick={resolveLocation} className="shrink-0 text-xs text-neutral-600 border border-neutral-300 rounded-full px-3 py-1 hover:bg-neutral-100 transition-colors">Enable</button>
+              <button onClick={resolveLocation} className="shrink-0 text-xs text-teal-700 border border-teal-200 rounded-full px-3 py-1 hover:bg-teal-50 transition-colors">Enable</button>
             </div>
           )}
           {locationStatus === 'denied' && (
             <div className="flex items-center gap-3">
               <p className="text-xs text-neutral-400">{subtitle.text}</p>
-              <button onClick={resolveLocation} className="shrink-0 text-xs text-neutral-600 border border-neutral-300 rounded-full px-3 py-1 hover:bg-neutral-100 transition-colors">Try again</button>
+              <button onClick={resolveLocation} className="shrink-0 text-xs text-teal-700 border border-teal-200 rounded-full px-3 py-1 hover:bg-teal-50 transition-colors">Try again</button>
             </div>
           )}
         </div>
@@ -419,7 +420,7 @@ export default function NearbyHome() {
             <button
               onClick={() => setSelectedCategoryId(null)}
               className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                !selectedCategoryId ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                !selectedCategoryId ? 'bg-teal-700 text-white' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
               }`}
             >
               All
@@ -429,7 +430,7 @@ export default function NearbyHome() {
                 key={cat.id}
                 onClick={() => setSelectedCategoryId((prev) => prev === cat.id ? null : cat.id)}
                 className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                  selectedCategoryId === cat.id ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                  selectedCategoryId === cat.id ? 'bg-teal-700 text-white' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                 }`}
               >
                 {cat.name}
@@ -453,7 +454,7 @@ export default function NearbyHome() {
             </p>
             <button
               onClick={() => router.push('/add-place')}
-              className="mt-6 w-full rounded-xl bg-neutral-900 px-4 py-3 text-sm font-medium text-white"
+              className="mt-6 w-full rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-3 text-sm font-semibold text-white transition-colors"
             >
               Add first place
             </button>
@@ -541,7 +542,7 @@ export default function NearbyHome() {
       {/* ── Floating add button ──────────────────────────────────────────────── */}
       <button
         onClick={() => router.push('/add-place')}
-        className="fixed bottom-6 right-6 rounded-full bg-neutral-900 px-5 py-3 text-sm font-medium text-white shadow-lg"
+        className="fixed bottom-6 right-5 rounded-full bg-teal-700 hover:bg-teal-800 active:bg-teal-900 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-colors"
       >
         + Add
       </button>

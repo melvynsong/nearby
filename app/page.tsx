@@ -122,16 +122,24 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-neutral-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-2xl bg-white border border-neutral-200 p-8 shadow-sm">
-        <h1 className="text-3xl font-semibold text-neutral-900">Nearby</h1>
-        <p className="mt-2 text-sm text-neutral-500">
-          Trusted food spots from your circle
-        </p>
+    <main className="min-h-screen bg-[#f8f8f6] flex flex-col items-center justify-center px-5 py-12">
+      {/* Logo */}
+      <div className="mb-8 flex flex-col items-center gap-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/nearby_logo.png" alt="Nearby" className="h-14 w-14 rounded-2xl shadow-sm" />
+        <div className="text-center">
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-900">Nearby</h1>
+          <p className="mt-1 text-sm text-neutral-500">Trusted food spots from your circle</p>
+        </div>
+        <span className="beta-pulse inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-600">
+          Beta
+        </span>
+      </div>
 
-        <div className="mt-8 space-y-5">
+      <div className="w-full max-w-sm rounded-2xl bg-white border border-neutral-200 p-7 shadow-sm">
+        <div className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-neutral-800 mb-2">
+            <label className="block text-sm font-medium text-neutral-700 mb-1.5">
               Last 4 digits of your mobile
             </label>
             <input
@@ -141,12 +149,12 @@ export default function Home() {
               value={last4}
               onChange={(e) => setLast4(e.target.value.replace(/\D/g, ''))}
               placeholder="e.g. 1234"
-              className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-neutral-500"
+              className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-neutral-800 mb-2">
+            <label className="block text-sm font-medium text-neutral-700 mb-1.5">
               Passcode
             </label>
             <input
@@ -154,10 +162,10 @@ export default function Home() {
               value={passcode}
               onChange={(e) => setPasscode(e.target.value)}
               placeholder="Enter passcode"
-              className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-neutral-500"
+              className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
             />
             <p className="mt-1.5 text-xs text-neutral-400">
-              This can be your personal passcode or your group's passcode.
+              Your personal passcode or your group's passcode.
             </p>
           </div>
 
@@ -166,14 +174,14 @@ export default function Home() {
           <button
             onClick={handleEnter}
             disabled={loading}
-            className="w-full rounded-xl bg-neutral-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
+            className="w-full rounded-xl bg-teal-700 hover:bg-teal-800 active:bg-teal-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 transition-colors"
           >
-            {loading ? 'Entering...' : 'Enter Nearby'}
+            {loading ? 'Entering…' : 'Enter Nearby'}
           </button>
 
           <p className="text-center text-xs text-neutral-400">
             New here?{' '}
-            <button onClick={() => router.push('/register')} className="underline text-neutral-600">
+            <button onClick={() => router.push('/register')} className="font-medium text-teal-700 hover:underline">
               Create an account
             </button>
           </p>

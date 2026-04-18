@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import AppHeader from '@/components/AppHeader'
 import { supabase } from '@/lib/supabase'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -526,7 +527,8 @@ export default function AddPlace() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <main className="min-h-screen bg-neutral-50 pb-28" style={{ overflowX: 'hidden', maxWidth: '100vw' }}>
+    <main className="min-h-screen bg-[#f8f8f6] pb-28" style={{ overflowX: 'hidden', maxWidth: '100vw' }}>
+      <AppHeader />
       <div className="mx-auto w-full max-w-md px-4 pt-5 box-border">
 
         <button
@@ -537,7 +539,7 @@ export default function AddPlace() {
           ← Back
         </button>
 
-        <h1 className="text-3xl font-semibold tracking-tight text-neutral-900">Add Food Spot</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-neutral-900">Add Food Spot</h1>
         <p className="mt-1 text-sm text-neutral-500">Start with a photo.</p>
 
         <div className="mt-5 space-y-4">
@@ -548,7 +550,7 @@ export default function AddPlace() {
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={() => cameraInputRef.current?.click()}
-                  className="rounded-2xl border border-neutral-200 bg-neutral-900 px-3 py-3 text-left text-white transition-transform duration-200 hover:scale-[1.01] active:scale-[0.99]"
+                  className="rounded-2xl border border-teal-800 bg-teal-700 px-3 py-3 text-left text-white transition-transform duration-200 hover:scale-[1.01] active:scale-[0.99]"
                 >
                   <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
@@ -651,7 +653,7 @@ export default function AddPlace() {
                             onClick={() => { setSelectedDish(name); setCustomDish('') }}
                             className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all min-w-0 ${
                               selectedDish === name
-                                ? 'bg-neutral-900 text-white'
+                                ? 'bg-teal-700 text-white'
                                 : idx === 0
                                 ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                                 : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
@@ -685,7 +687,7 @@ export default function AddPlace() {
                               onClick={() => { setSelectedDish(name); setCustomDish('') }}
                               className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all min-w-0 ${
                                 selectedDish === name
-                                  ? 'bg-neutral-900 text-white'
+                                  ? 'bg-teal-700 text-white'
                                   : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
                               }`}
                             >
@@ -846,7 +848,7 @@ export default function AddPlace() {
             <button
               onClick={handleSave}
               disabled={saving || loadingDetails || isBlocking}
-              className="w-full rounded-xl bg-neutral-900 px-4 py-3 text-sm font-medium text-white transition-all duration-300 hover:opacity-95 disabled:opacity-40"
+              className="w-full rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-3 text-sm font-semibold text-white transition-all duration-300 disabled:opacity-40"
             >
               {saving ? 'Saving...' : 'Save food spot'}
             </button>
