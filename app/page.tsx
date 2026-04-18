@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import ErrorState from '@/components/ErrorState'
 import AppHeader from '@/components/AppHeader'
 import NearbyHome from '@/app/nearby/page'
-import { withBasePath } from '@/lib/base-path'
+import { apiPath, withBasePath } from '@/lib/base-path'
 
 type GroupEntry = {
   memberId: string
@@ -22,10 +22,13 @@ type RegisterData = {
   phone: string
 }
 
+type LoginMethod = 'personal' | 'group'
+
 export default function Home() {
   const router = useRouter()
   const [last4, setLast4] = useState('')
   const [passcode, setPasscode] = useState('')
+  const [loginMethod, setLoginMethod] = useState<LoginMethod>('personal')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showLoginErrorCard, setShowLoginErrorCard] = useState(false)
@@ -92,151 +95,47 @@ export default function Home() {
       return
     }
 
+    if (!passcode.trim()) {
+      setError(loginMethod === 'personal' ? 'Enter your personal passcode.' : 'Enter your group passcode.')
+      return
+    }
+
     setLoading(true)
 
     try {
-      // Fetch all members with this phone_last4
-      const { data: members, error: membersError } = await supabase
-        .from('members')
-        .select('id, display_name, group_id, user_id')
-        .eq('phone_last4', last4)
+      const response = await fetch(apiPath('/api/auth/enter'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          last4,
+          method: loginMethod,
+          personalPasscode: loginMethod === 'personal' ? passcode.trim() : '',
+          groupPasscode: loginMethod === 'group' ? passcode.trim() : '',
+        }),
+      })
 
-      if (membersError) {
-        console.error('[Nearby][API] Members lookup failed:', membersError)
-        throw new Error('LOGIN_MEMBERS_LOOKUP_FAILED')
-      }
-
-      if (!members || members.length === 0) {
-        const { data: accountCandidates, error: accountCandidatesError } = await supabase
-          .from('users')
-          .select('id, full_name, phone_number, phone_last4')
-          .eq('phone_last4', last4)
-          .limit(2)
-
-        if (accountCandidatesError) {
-          console.error('[Nearby][API] Account-only lookup failed:', accountCandidatesError)
-          throw new Error('LOGIN_ACCOUNT_LOOKUP_FAILED')
-        }
-
-        const matches = accountCandidates ?? []
-
-        if (matches.length > 1) {
-          setError('We found multiple accounts with this mobile ending. Join with your group passcode instead.')
-          setLoading(false)
-          return
-        }
-
-        const userOnly = matches[0]
-
-        if (userOnly?.id) {
-          localStorage.setItem('nearby_register', JSON.stringify({
-            userId: userOnly.id,
-            userName: userOnly.full_name ?? 'Member',
-            phone4: userOnly.phone_last4 ?? last4,
-            phone: userOnly.phone_number ?? '',
-          }))
-          setRegisterAccount({
-            userId: userOnly.id,
-            userName: userOnly.full_name ?? 'Member',
-            phone4: userOnly.phone_last4 ?? last4,
-            phone: userOnly.phone_number ?? '',
-          })
-          setLoading(false)
-          return
-        }
-
-        setError('Incorrect details.')
-        setLoading(false)
+      const result = await response.json()
+      if (!response.ok || !result?.ok) {
+        setError(result?.message ?? 'Incorrect details.')
         return
       }
 
-      // Fetch all groups for those members
-      const groupIds = members.map((m) => m.group_id)
-      const { data: groups, error: groupsError } = await supabase
-        .from('groups')
-        .select('id, name, access_code')
-        .in('id', groupIds)
+      const register = result.register as RegisterData | null
+      const session = result.session as (GroupEntry & { allGroups: GroupEntry[] }) | null
 
-      if (groupsError) {
-        console.error('[Nearby][API] Groups lookup failed:', groupsError)
-        throw new Error('LOGIN_GROUPS_LOOKUP_FAILED')
-      }
-
-      // Match group passcode for one of the user's groups.
-      let matched: (GroupEntry & { userId: string }) | null = null
-      const trimmedPasscode = passcode.trim()
-
-      if (!trimmedPasscode) {
-        setError('Enter your group passcode.')
-        setLoading(false)
+      if (!register?.userId) {
+        setError('We could not complete this just now. Please try again.')
         return
       }
 
-      for (const member of members) {
-        const group = groups?.find((g) => g.id === member.group_id)
-        const matchGroupPasscode = group?.access_code === trimmedPasscode
+      localStorage.setItem('nearby_register', JSON.stringify(register))
+      setRegisterAccount(register)
 
-        if (group && member.user_id && matchGroupPasscode) {
-          matched = {
-            userId: member.user_id,
-            memberId: member.id,
-            memberName: member.display_name,
-            groupId: group.id,
-            groupName: group.name,
-          }
-          break
-        }
-      }
-
-      if (!matched) {
-        setError('Incorrect details.')
-        setLoading(false)
+      if (!result.hasGroup || !session) {
         return
       }
 
-      // Build allGroups from memberships for the matched user only.
-      const { data: userMembers, error: userMembersError } = await supabase
-        .from('members')
-        .select('id, display_name, group_id')
-        .eq('user_id', matched.userId)
-
-      if (userMembersError) {
-        console.error('[Nearby][API] User members lookup failed:', userMembersError)
-        throw new Error('LOGIN_USER_MEMBERS_LOOKUP_FAILED')
-      }
-
-      const userGroupIds = (userMembers ?? []).map((m) => m.group_id)
-      const { data: userGroups, error: userGroupsError } = await supabase
-        .from('groups')
-        .select('id, name')
-        .in('id', userGroupIds)
-
-      if (userGroupsError) {
-        console.error('[Nearby][API] User groups lookup failed:', userGroupsError)
-        throw new Error('LOGIN_USER_GROUPS_LOOKUP_FAILED')
-      }
-
-      const allGroups: GroupEntry[] = (userMembers ?? [])
-        .map((m) => {
-          const g = userGroups?.find((g) => g.id === m.group_id)
-          if (!g) return null
-          return { memberId: m.id, memberName: m.display_name, groupId: g.id, groupName: g.name }
-        })
-        .filter(Boolean) as GroupEntry[]
-
-      localStorage.setItem('nearby_session', JSON.stringify({
-        memberId: matched.memberId,
-        memberName: matched.memberName,
-        groupId: matched.groupId,
-        groupName: matched.groupName,
-        allGroups,
-      }))
-      localStorage.setItem('nearby_register', JSON.stringify({
-        userId: matched.userId,
-        userName: matched.memberName,
-        phone4: last4,
-        phone: '',
-      }))
+      localStorage.setItem('nearby_session', JSON.stringify(session))
 
       const nextAction = localStorage.getItem('nearby_after_auth')
       if (nextAction === 'create-group') {
@@ -256,6 +155,7 @@ export default function Home() {
       console.error('[Nearby][API] Login failed:', err)
       setError('We could not complete this just now. Please try again.')
       setShowLoginErrorCard(true)
+    } finally {
       setLoading(false)
     }
   }
@@ -327,17 +227,41 @@ export default function Home() {
 
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1.5">
-              Group passcode
+              Sign in with
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setLoginMethod('personal')}
+                className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${loginMethod === 'personal' ? 'border-teal-600 bg-teal-50 text-teal-700' : 'border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-100'}`}
+              >
+                Personal passcode
+              </button>
+              <button
+                type="button"
+                onClick={() => setLoginMethod('group')}
+                className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${loginMethod === 'group' ? 'border-teal-600 bg-teal-50 text-teal-700' : 'border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-100'}`}
+              >
+                Group passcode
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1.5">
+              {loginMethod === 'personal' ? 'Personal passcode' : 'Group passcode'}
             </label>
             <input
               type="password"
               value={passcode}
               onChange={(e) => setPasscode(e.target.value)}
-              placeholder="9999"
+              placeholder={loginMethod === 'personal' ? 'Your personal passcode' : '9999'}
               className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
             />
             <p className="mt-1.5 text-xs text-neutral-400">
-              Required if you are already in a group.
+              {loginMethod === 'personal'
+                ? 'Use the personal passcode you set in settings.'
+                : 'Required if you are already in a group.'}
             </p>
           </div>
 
