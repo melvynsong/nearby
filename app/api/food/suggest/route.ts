@@ -6,6 +6,7 @@ type FoodSuggestResponse = {
   detectedTextHints: string[]
   containsMultipleFoods: boolean
   reasoningShort: string
+  confidence: number | null
 }
 
 const EMPTY_RESULT: FoodSuggestResponse = {
@@ -14,28 +15,48 @@ const EMPTY_RESULT: FoodSuggestResponse = {
   detectedTextHints: [],
   containsMultipleFoods: false,
   reasoningShort: 'Not enough visual detail to identify a food with confidence.',
+  confidence: null,
 }
 
+// Handles both old schema fields and the new Singapore-optimised schema from the AI.
 function normalizeResult(raw: unknown): FoodSuggestResponse {
-  const obj = (raw ?? {}) as Partial<FoodSuggestResponse>
-  const alternatives = Array.isArray(obj.alternativeSuggestions)
-    ? obj.alternativeSuggestions.filter((x): x is string => typeof x === 'string').slice(0, 8)
+  const obj = (raw ?? {}) as Record<string, unknown>
+
+  // New schema: primaryDish / alternatives / confidence / reasoning
+  // Old schema: primarySuggestion / alternativeSuggestions / reasoningShort
+  const primaryDish =
+    typeof obj.primaryDish === 'string' ? obj.primaryDish.trim() : null
+  const primarySuggestionLegacy =
+    typeof obj.primarySuggestion === 'string' ? obj.primarySuggestion.trim() : null
+
+  const confidence =
+    typeof obj.confidence === 'number' ? Math.min(1, Math.max(0, obj.confidence)) : null
+
+  // If confidence is present and below threshold, treat primary as uncertain
+  const primary = primaryDish || primarySuggestionLegacy
+  const primarySuggestion =
+    primary && (confidence === null || confidence >= 0.6) ? primary : null
+
+  const alternativesNew = Array.isArray(obj.alternatives)
+    ? (obj.alternatives as unknown[]).filter((x): x is string => typeof x === 'string').slice(0, 5)
     : []
-  const hints = Array.isArray(obj.detectedTextHints)
-    ? obj.detectedTextHints.filter((x): x is string => typeof x === 'string').slice(0, 12)
+  const alternativesLegacy = Array.isArray(obj.alternativeSuggestions)
+    ? (obj.alternativeSuggestions as unknown[]).filter((x): x is string => typeof x === 'string').slice(0, 5)
     : []
+  const alternativeSuggestions = alternativesNew.length ? alternativesNew : alternativesLegacy
+
+  const reasoning =
+    typeof obj.reasoning === 'string' ? obj.reasoning.trim() :
+    typeof obj.reasoningShort === 'string' ? obj.reasoningShort.trim() :
+    EMPTY_RESULT.reasoningShort
+
   return {
-    primarySuggestion:
-      typeof obj.primarySuggestion === 'string' && obj.primarySuggestion.trim()
-        ? obj.primarySuggestion.trim()
-        : null,
-    alternativeSuggestions: alternatives,
-    detectedTextHints: hints,
-    containsMultipleFoods: Boolean(obj.containsMultipleFoods),
-    reasoningShort:
-      typeof obj.reasoningShort === 'string' && obj.reasoningShort.trim()
-        ? obj.reasoningShort.trim()
-        : EMPTY_RESULT.reasoningShort,
+    primarySuggestion,
+    alternativeSuggestions,
+    detectedTextHints: [],
+    containsMultipleFoods: false,
+    reasoningShort: reasoning,
+    confidence,
   }
 }
 
@@ -53,27 +74,42 @@ function extractJson(content: string): FoodSuggestResponse | null {
   }
 }
 
+const SYSTEM_PROMPT = `You are a highly trained food recognition assistant specialising in real-world dishes, especially in Singapore and Southeast Asia hawker and restaurant contexts.
+
+Your job is to identify the exact dish shown in an image as accurately as possible.
+
+You MUST prioritise:
+- Specific dish names (e.g. "Hainanese Chicken Rice", NOT "Chinese food")
+- Common real-world naming used by people in Singapore
+- Visual evidence from the image only (do not hallucinate)`
+
+const USER_INSTRUCTIONS = `Analyze the food image and return ONLY valid JSON — no markdown, no explanation outside JSON.
+
+Instructions:
+1. Identify the PRIMARY DISH (use specific dish names only).
+2. If multiple items exist, choose the MAIN dish (largest or central item).
+3. Assign a confidence score between 0 and 1:
+   - 0.85–1.00: Very confident (clear visual match)
+   - 0.60–0.84: Likely but not certain
+   - < 0.60: Uncertain — be strict, do not overestimate
+4. If uncertain, provide 2–3 closely related alternatives.
+5. Prefer Singapore/local dish names (e.g. "Chicken Rice" over "Poached Chicken with Rice").
+
+Good dish name examples: Hainanese Chicken Rice, Nasi Lemak, Char Kway Teow, Laksa, Roti Prata, Biryani, Fishball Noodles, Wanton Mee, Satay, Bak Kut Teh, Ramen, Sushi, Burger, Fish and Chips, Pasta Carbonara.
+Bad examples (DO NOT USE): Western Food, Asian Food, Chinese Cuisine, Indian Cuisine, Mixed Food.
+
+If the image is unclear: lower confidence, provide alternatives, do NOT invent a precise dish.
+
+Required output schema (strict JSON):
+{
+  "primaryDish": "string",
+  "confidence": number,
+  "alternatives": ["string", "string"],
+  "reasoning": "short visual explanation under 20 words"
+}`
+
 async function requestAiSuggestion(apiKey: string, imageUrl: string): Promise<FoodSuggestResponse> {
   const configuredModel = process.env.OPENAI_MODEL || 'gpt-4o-mini'
-  const prompt = `You are helping users classify food photos in a mobile app.
-Analyze the image and return JSON only (no markdown).
-
-Required schema:
-{
-  "primarySuggestion": string | null,
-  "alternativeSuggestions": string[],
-  "detectedTextHints": string[],
-  "containsMultipleFoods": boolean,
-  "reasoningShort": string
-}
-
-Rules:
-- Use both visual cues and visible text (stall names, signage, menus).
-- Keep reasoningShort under 22 words.
-- Do NOT assign certainty language beyond what is visible.
-- Include Singapore-relevant suggestions where plausible: Chicken Rice, Prawn Noodles, Laksa, Bak Kut Teh, Char Kway Teow, Hokkien Mee, Satay, Nasi Lemak, Wonton Mee, Fish Ball Noodles, Roti Prata.
-- If unclear, set primarySuggestion to null.
-- Do not include duplicate alternatives.`
 
   async function callOpenAi(model: string): Promise<{ ok: boolean; content: string; errorText?: string }> {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -84,13 +120,14 @@ Rules:
       },
       body: JSON.stringify({
         model,
-        temperature: 0.2,
-        max_tokens: 450,
+        temperature: 0.1,
+        max_tokens: 300,
         messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
           {
             role: 'user',
             content: [
-              { type: 'text', text: prompt },
+              { type: 'text', text: USER_INSTRUCTIONS },
               { type: 'image_url', image_url: { url: imageUrl, detail: 'high' } },
             ],
           },

@@ -39,6 +39,7 @@ type FoodSuggestResult = {
   detectedTextHints: string[]
   containsMultipleFoods: boolean
   reasoningShort: string
+  confidence: number | null
 }
 
 const emptySuggestion: FoodSuggestResult = {
@@ -47,6 +48,7 @@ const emptySuggestion: FoodSuggestResult = {
   detectedTextHints: [],
   containsMultipleFoods: false,
   reasoningShort: '',
+  confidence: null,
 }
 
 const broadCategories = [
@@ -214,6 +216,7 @@ export default function AddPlace() {
         detectedTextHints: Array.isArray(data.detectedTextHints) ? data.detectedTextHints : [],
         containsMultipleFoods: Boolean(data.containsMultipleFoods),
         reasoningShort: typeof data.reasoningShort === 'string' ? data.reasoningShort : '',
+        confidence: typeof data.confidence === 'number' ? data.confidence : null,
       }
 
       setAiSuggestion(normalized)
