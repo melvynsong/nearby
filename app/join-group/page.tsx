@@ -157,7 +157,7 @@ export default function JoinGroupPage() {
               className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
             />
             <p className="mt-2 text-xs text-neutral-500">
-              Make sure you have created your account and set your own passcode before joining.
+              Make sure you have created your account before joining.
             </p>
           </div>
 

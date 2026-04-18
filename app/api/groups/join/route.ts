@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     if (sessionMemberId) {
       const creator = await supabase
         .from('members')
-        .select('id, user_id, display_name, phone_last4, users ( phone_number, personal_passcode )')
+        .select('id, user_id, display_name, phone_last4, users ( phone_number )')
         .eq('id', sessionMemberId)
         .maybeSingle()
 
@@ -47,14 +47,6 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const personalPasscode = (creator.data.users as { personal_passcode?: string | null } | null)?.personal_passcode
-      if (!personalPasscode) {
-        return NextResponse.json(
-          { ok: false, message: 'Please set your own passcode before joining a group.' },
-          { status: 400 },
-        )
-      }
-
       userId = creator.data.user_id as string
       displayName = (creator.data.display_name as string | null) ?? 'Member'
       const phone = (creator.data.users as { phone_number?: string } | null)?.phone_number ?? ''
@@ -62,7 +54,7 @@ export async function POST(request: NextRequest) {
     } else {
       const user = await supabase
         .from('users')
-        .select('id, full_name, phone_number, phone_last4, personal_passcode')
+        .select('id, full_name, phone_number, phone_last4')
         .eq('id', requesterUserId)
         .maybeSingle()
 
@@ -71,13 +63,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           { ok: false, message: 'Please create an account or sign in before joining a group.' },
           { status: 401 },
-        )
-      }
-
-      if (!user.data.personal_passcode) {
-        return NextResponse.json(
-          { ok: false, message: 'Please set your own passcode before joining a group.' },
-          { status: 400 },
         )
       }
 

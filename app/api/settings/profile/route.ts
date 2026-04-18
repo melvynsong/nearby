@@ -7,7 +7,6 @@ export async function POST(request: NextRequest) {
     const userId = typeof body?.userId === 'string' ? body.userId : ''
     const fullName = typeof body?.fullName === 'string' ? body.fullName.trim() : ''
     const phoneNumber = typeof body?.phoneNumber === 'string' ? body.phoneNumber.trim() : ''
-    const personalPasscode = typeof body?.personalPasscode === 'string' ? body.personalPasscode.trim() : ''
 
     if (!userId || !fullName || !phoneNumber) {
       return NextResponse.json(
@@ -23,13 +22,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (personalPasscode && personalPasscode.length < 4) {
-      return NextResponse.json(
-        { ok: false, message: 'Passcode must be at least 4 characters.' },
-        { status: 400 },
-      )
-    }
-
     const supabase = getServerSupabaseClient()
     const { error } = await supabase
       .from('users')
@@ -37,11 +29,11 @@ export async function POST(request: NextRequest) {
         full_name: fullName,
         phone_number: phoneNumber,
         phone_last4: phoneNumber.replace(/\D/g, '').slice(-4),
-        personal_passcode: personalPasscode || null,
       })
       .eq('id', userId)
 
     if (error) {
+      console.error('[Nearby][Settings] Failed to update profile:', error)
       console.error('[Nearby][Save][Profile] Update failed:', error)
       return NextResponse.json(
         { ok: false, message: 'We could not save your changes. Please try again.' },

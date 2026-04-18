@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     if (sessionMemberId) {
       const { data: creatorMember, error: creatorError } = await supabase
         .from('members')
-        .select('id, user_id, display_name, phone_last4, users ( phone_number, personal_passcode )')
+        .select('id, user_id, display_name, phone_last4, users ( phone_number )')
         .eq('id', sessionMemberId)
         .maybeSingle()
 
@@ -54,14 +54,6 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const personalPasscode = (creatorMember.users as { personal_passcode?: string | null } | null)?.personal_passcode
-      if (!personalPasscode) {
-        return NextResponse.json(
-          { ok: false, message: 'Please set your own passcode before creating a group.' },
-          { status: 400 },
-        )
-      }
-
       creatorUserId = creatorMember.user_id as string
       creatorName = (creatorMember.display_name as string | null) ?? fallbackMemberName
       const creatorPhone = (creatorMember.users as { phone_number?: string } | null)?.phone_number ?? ''
@@ -69,7 +61,7 @@ export async function POST(request: NextRequest) {
     } else {
       const { data: creatorUser, error: userError } = await supabase
         .from('users')
-        .select('id, full_name, phone_number, phone_last4, personal_passcode')
+        .select('id, full_name, phone_number, phone_last4')
         .eq('id', requesterUserId)
         .maybeSingle()
 
@@ -78,13 +70,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           { ok: false, message: 'Please create an account or sign in before creating a group.' },
           { status: 401 },
-        )
-      }
-
-      if (!creatorUser.personal_passcode) {
-        return NextResponse.json(
-          { ok: false, message: 'Please set your own passcode before creating a group.' },
-          { status: 400 },
         )
       }
 

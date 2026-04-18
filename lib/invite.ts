@@ -13,7 +13,6 @@ export function buildGroupInviteMessage(groupName: string, groupPasscode: string
     'Before joining:',
     '',
     '* Create your account',
-    '* Set your own passcode',
     '',
     'See you inside.',
   ].join('\n')

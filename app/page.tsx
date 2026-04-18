@@ -76,27 +76,42 @@ export default function Home() {
       setError('Enter the last 4 digits of your mobile.')
       return
     }
-    if (!passcode.trim()) {
-      setError('Enter your passcode.')
-      return
-    }
 
     setLoading(true)
 
     try {
       // Fetch all members with this phone_last4
-      const { data: members } = await supabase
+      const { data: members, error: membersError } = await supabase
         .from('members')
         .select('id, display_name, group_id, user_id')
         .eq('phone_last4', last4)
 
+      if (membersError) {
+        console.error('[Nearby][API] Members lookup failed:', membersError)
+        throw new Error('LOGIN_MEMBERS_LOOKUP_FAILED')
+      }
+
       if (!members || members.length === 0) {
-        const { data: userOnly } = await supabase
+        const { data: accountCandidates, error: accountCandidatesError } = await supabase
           .from('users')
-          .select('id, full_name, phone_number, phone_last4, personal_passcode')
+          .select('id, full_name, phone_number, phone_last4')
           .eq('phone_last4', last4)
-          .eq('personal_passcode', passcode.trim())
-          .maybeSingle()
+          .limit(2)
+
+        if (accountCandidatesError) {
+          console.error('[Nearby][API] Account-only lookup failed:', accountCandidatesError)
+          throw new Error('LOGIN_ACCOUNT_LOOKUP_FAILED')
+        }
+
+        const matches = accountCandidates ?? []
+
+        if (matches.length > 1) {
+          setError('We found multiple accounts with this mobile ending. Join with your group passcode instead.')
+          setLoading(false)
+          return
+        }
+
+        const userOnly = matches[0]
 
         if (userOnly?.id) {
           localStorage.setItem('nearby_register', JSON.stringify({
@@ -122,29 +137,31 @@ export default function Home() {
 
       // Fetch all groups for those members
       const groupIds = members.map((m) => m.group_id)
-      const { data: groups } = await supabase
+      const { data: groups, error: groupsError } = await supabase
         .from('groups')
         .select('id, name, access_code')
         .in('id', groupIds)
 
-      // Fetch personal passcodes for users behind these member records.
-      const userIds = [...new Set(members.map((m) => m.user_id).filter(Boolean))]
-      const { data: users } = await supabase
-        .from('users')
-        .select('id, personal_passcode')
-        .in('id', userIds)
+      if (groupsError) {
+        console.error('[Nearby][API] Groups lookup failed:', groupsError)
+        throw new Error('LOGIN_GROUPS_LOOKUP_FAILED')
+      }
 
-      // Match either group passcode or personal passcode.
+      // Match group passcode for one of the user's groups.
       let matched: (GroupEntry & { userId: string }) | null = null
       const trimmedPasscode = passcode.trim()
 
+      if (!trimmedPasscode) {
+        setError('Enter your group passcode.')
+        setLoading(false)
+        return
+      }
+
       for (const member of members) {
         const group = groups?.find((g) => g.id === member.group_id)
-        const user = users?.find((u) => u.id === member.user_id)
         const matchGroupPasscode = group?.access_code === trimmedPasscode
-        const matchPersonalPasscode = user?.personal_passcode === trimmedPasscode
 
-        if (group && member.user_id && (matchGroupPasscode || matchPersonalPasscode)) {
+        if (group && member.user_id && matchGroupPasscode) {
           matched = {
             userId: member.user_id,
             memberId: member.id,
@@ -163,16 +180,26 @@ export default function Home() {
       }
 
       // Build allGroups from memberships for the matched user only.
-      const { data: userMembers } = await supabase
+      const { data: userMembers, error: userMembersError } = await supabase
         .from('members')
         .select('id, display_name, group_id')
         .eq('user_id', matched.userId)
 
+      if (userMembersError) {
+        console.error('[Nearby][API] User members lookup failed:', userMembersError)
+        throw new Error('LOGIN_USER_MEMBERS_LOOKUP_FAILED')
+      }
+
       const userGroupIds = (userMembers ?? []).map((m) => m.group_id)
-      const { data: userGroups } = await supabase
+      const { data: userGroups, error: userGroupsError } = await supabase
         .from('groups')
         .select('id, name')
         .in('id', userGroupIds)
+
+      if (userGroupsError) {
+        console.error('[Nearby][API] User groups lookup failed:', userGroupsError)
+        throw new Error('LOGIN_USER_GROUPS_LOOKUP_FAILED')
+      }
 
       const allGroups: GroupEntry[] = (userMembers ?? [])
         .map((m) => {
@@ -277,7 +304,7 @@ export default function Home() {
 
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1.5">
-              Passcode
+              Group passcode
             </label>
             <input
               type="password"
@@ -287,7 +314,7 @@ export default function Home() {
               className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
             />
             <p className="mt-1.5 text-xs text-neutral-400">
-              Your personal passcode or your group's passcode.
+              Required if you are already in a group.
             </p>
           </div>
 

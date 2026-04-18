@@ -138,7 +138,7 @@ export default function GroupInviteActions({ groupName, groupPasscode }: GroupIn
       </div>
 
       <p className="mt-3 text-xs text-neutral-500">
-        Make sure they have created their account and set their own passcode before joining.
+        Make sure they have created their account before joining.
       </p>
 
       {feedback && <p className="mt-2 text-xs font-medium text-teal-700">{feedback}</p>}

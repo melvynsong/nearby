@@ -25,7 +25,6 @@ type UserProfile = {
   userId: string
   fullName: string
   phoneNumber: string
-  personalPasscode: string
 }
 
 export default function SettingsPage() {
@@ -91,7 +90,7 @@ export default function SettingsPage() {
       }
 
       let userId = ''
-      let profileSource: { full_name?: string; phone_number?: string; personal_passcode?: string | null } | null = null
+      let profileSource: { full_name?: string; phone_number?: string } | null = null
 
       if (rawSession) {
         const parsed = JSON.parse(rawSession) as Session
@@ -99,7 +98,7 @@ export default function SettingsPage() {
 
         const { data: member, error: memberError } = await supabase
           .from('members')
-          .select('user_id, users ( full_name, phone_number, personal_passcode )')
+          .select('user_id, users ( full_name, phone_number )')
           .eq('id', parsed.memberId)
           .maybeSingle()
 
@@ -109,7 +108,7 @@ export default function SettingsPage() {
         }
 
         userId = member.user_id as string
-        profileSource = member.users as { full_name?: string; phone_number?: string; personal_passcode?: string | null } | null
+        profileSource = member.users as { full_name?: string; phone_number?: string } | null
       } else if (rawRegister) {
         const reg = JSON.parse(rawRegister) as RegisterData
         userId = reg.userId
@@ -120,7 +119,7 @@ export default function SettingsPage() {
 
         const { data: userOnly, error: userOnlyError } = await supabase
           .from('users')
-          .select('id, full_name, phone_number, personal_passcode')
+          .select('id, full_name, phone_number')
           .eq('id', userId)
           .maybeSingle()
 
@@ -132,7 +131,23 @@ export default function SettingsPage() {
         profileSource = {
           full_name: userOnly.full_name ?? reg.userName,
           phone_number: userOnly.phone_number ?? reg.phone,
-          personal_passcode: userOnly.personal_passcode,
+        }
+      }
+
+      if (userId && (!profileSource?.full_name || !profileSource?.phone_number)) {
+        const { data: userFallback, error: userFallbackError } = await supabase
+          .from('users')
+          .select('id, full_name, phone_number')
+          .eq('id', userId)
+          .maybeSingle()
+
+        if (userFallbackError) {
+          console.error('[Nearby][Settings] Profile fallback load failed:', userFallbackError)
+        } else if (userFallback?.id) {
+          profileSource = {
+            full_name: userFallback.full_name ?? profileSource?.full_name,
+            phone_number: userFallback.phone_number ?? profileSource?.phone_number,
+          }
         }
       }
 
@@ -140,7 +155,6 @@ export default function SettingsPage() {
         userId,
         fullName: profileSource?.full_name ?? 'Member',
         phoneNumber: profileSource?.phone_number ?? '',
-        personalPasscode: profileSource?.personal_passcode ?? '',
       })
 
       if (rawSession) {
@@ -194,8 +208,6 @@ export default function SettingsPage() {
 
     const name = profile.fullName.trim()
     const phone = profile.phoneNumber.trim()
-    const passcode = profile.personalPasscode.trim()
-
     if (!name) {
       setProfileError('Please enter your name.')
       return
@@ -203,11 +215,6 @@ export default function SettingsPage() {
 
     if (phone.replace(/\D/g, '').length < 8) {
       setProfileError('Please enter a valid telephone number.')
-      return
-    }
-
-    if (passcode && passcode.length < 4) {
-      setProfileError('Passcode must be at least 4 characters.')
       return
     }
 
@@ -220,7 +227,6 @@ export default function SettingsPage() {
           userId: profile.userId,
           fullName: name,
           phoneNumber: phone,
-          personalPasscode: passcode,
         }),
       })
 
@@ -338,16 +344,6 @@ export default function SettingsPage() {
                   />
                 </div>
 
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-neutral-700">Personal passcode</label>
-                  <input
-                    type="password"
-                    value={profile.personalPasscode}
-                    onChange={(e) => setProfile((prev) => prev ? { ...prev, personalPasscode: e.target.value } : prev)}
-                    placeholder="Set your personal passcode"
-                    className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
-                  />
-                </div>
               </div>
 
               {profileError && <p className="mt-3 text-sm text-amber-700">{profileError}</p>}
