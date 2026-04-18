@@ -56,6 +56,11 @@ export default function Register() {
     setSaving(true)
 
     try {
+      console.log('[Nearby][Register] Supabase client env check:', {
+        hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+        hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      })
+
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
       console.log('[Nearby][Register] getSession result:', {
         hasSession: !!sessionData?.session,
@@ -63,9 +68,19 @@ export default function Register() {
         error: sessionError,
       })
 
+      if (sessionError) {
+        console.warn('[Nearby][Register] Branch: getSession error')
+      }
+
       let authUserId = sessionData?.session?.user?.id ?? null
 
+      if (authUserId) {
+        console.log('[Nearby][Register] Branch: existing session user found')
+      }
+
       if (!authUserId) {
+        console.log('[Nearby][Register] Branch: no session user, attempting auth signup')
+
         const signUpResult = await supabase.auth.signInAnonymously({
           options: {
             data: {
@@ -75,18 +90,43 @@ export default function Register() {
           },
         })
 
+        const signUpUserId = signUpResult.data.user?.id ?? null
+        const signUpSessionUserId = signUpResult.data.session?.user?.id ?? null
+
         console.log('[Nearby][Register] signInAnonymously response:', {
-          userId: signUpResult.data.user?.id ?? null,
-          hasSession: !!signUpResult.data.session,
           error: signUpResult.error,
+          dataUser: signUpResult.data.user ?? null,
+          dataSession: signUpResult.data.session ?? null,
+          userId: signUpUserId,
+          sessionUserId: signUpSessionUserId,
         })
 
         if (signUpResult.error) {
-          setError('We could not create your account session. Please try again.')
+          console.warn('[Nearby][Register] Branch: signup error')
+          const rawMessage = signUpResult.error.message?.trim() || 'Unknown auth error'
+          setError(`Auth sign-up failed: ${rawMessage}`)
           return
         }
 
-        authUserId = signUpResult.data.user?.id ?? null
+        if (signUpUserId && signUpSessionUserId) {
+          console.log('[Nearby][Register] Branch: signup returned user + session')
+        } else if (signUpUserId && !signUpSessionUserId) {
+          console.warn('[Nearby][Register] Branch: signup returned user but no session')
+        } else {
+          console.warn('[Nearby][Register] Branch: signup returned no user and no session')
+        }
+
+        authUserId = signUpUserId ?? signUpSessionUserId
+
+        if (!authUserId && signUpResult.data.user && !signUpResult.data.session) {
+          const { data: retrySessionData, error: retrySessionError } = await supabase.auth.getSession()
+          console.log('[Nearby][Register] getSession retry after signup:', {
+            hasSession: !!retrySessionData?.session,
+            sessionUserId: retrySessionData?.session?.user?.id ?? null,
+            error: retrySessionError,
+          })
+          authUserId = retrySessionData?.session?.user?.id ?? null
+        }
       }
 
       if (!authUserId) {
@@ -95,15 +135,22 @@ export default function Register() {
           userId: userData.user?.id ?? null,
           error: userError,
         })
+        if (userData.user?.id) {
+          console.log('[Nearby][Register] Branch: user available via getUser')
+        } else {
+          console.warn('[Nearby][Register] Branch: getUser returned no user')
+        }
         authUserId = userData.user?.id ?? null
       }
 
       if (!authUserId) {
+        console.log('[Nearby][Register] Branch: waiting for auth state change')
         authUserId = await waitForAuthenticatedUser()
       }
 
       if (!authUserId) {
-        setError('Please complete account confirmation, then try again.')
+        console.warn('[Nearby][Register] Branch: no auth user after all checks')
+        setError('Account was created but session is not ready yet. Please wait a moment and try again.')
         return
       }
 
