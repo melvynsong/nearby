@@ -54,7 +54,7 @@ function extractJson(content: string): FoodSuggestResponse | null {
 }
 
 async function requestAiSuggestion(apiKey: string, imageUrl: string): Promise<FoodSuggestResponse> {
-  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini'
+  const configuredModel = process.env.OPENAI_MODEL || 'gpt-4o-mini'
   const prompt = `You are helping users classify food photos in a mobile app.
 Analyze the image and return JSON only (no markdown).
 
@@ -75,39 +75,60 @@ Rules:
 - If unclear, set primarySuggestion to null.
 - Do not include duplicate alternatives.`
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.2,
-      max_tokens: 450,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            { type: 'image_url', image_url: { url: imageUrl, detail: 'high' } },
-          ],
-        },
-      ],
-    }),
-    signal: AbortSignal.timeout(30000),
-  })
+  async function callOpenAi(model: string): Promise<{ ok: boolean; content: string; errorText?: string }> {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        max_tokens: 450,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              { type: 'image_url', image_url: { url: imageUrl, detail: 'high' } },
+            ],
+          },
+        ],
+      }),
+      signal: AbortSignal.timeout(30000),
+    })
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    console.error('[food/suggest] OpenAI error:', response.status, errorText)
+    if (!response.ok) {
+      return { ok: false, content: '', errorText: await response.text() }
+    }
+
+    const data = await response.json()
+    const content: string = data.choices?.[0]?.message?.content ?? ''
+    return { ok: true, content }
+  }
+
+  const first = await callOpenAi(configuredModel)
+  if (first.ok) {
+    const parsed = extractJson(first.content)
+    return parsed ?? EMPTY_RESULT
+  }
+
+  // If configured model is unavailable, fall back to a known lightweight vision model.
+  const isModelNotFound = (first.errorText ?? '').includes('model_not_found') || (first.errorText ?? '').includes('does not exist')
+  if (isModelNotFound && configuredModel !== 'gpt-4o-mini') {
+    console.warn('[food/suggest] Falling back from unavailable model to gpt-4o-mini')
+    const fallback = await callOpenAi('gpt-4o-mini')
+    if (fallback.ok) {
+      const parsed = extractJson(fallback.content)
+      return parsed ?? EMPTY_RESULT
+    }
+    console.error('[food/suggest] OpenAI fallback error:', fallback.errorText)
     throw new Error('AI request failed')
   }
 
-  const data = await response.json()
-  const content: string = data.choices?.[0]?.message?.content ?? ''
-  const parsed = extractJson(content)
-  return parsed ?? EMPTY_RESULT
+  console.error('[food/suggest] OpenAI error:', first.errorText)
+  throw new Error('AI request failed')
 }
 
 export async function POST(req: NextRequest) {
