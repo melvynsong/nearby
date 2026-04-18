@@ -2,9 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import type { User } from '@supabase/supabase-js'
 import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
 import GroupInviteActions from '@/components/GroupInviteActions'
+import { supabase } from '@/lib/supabase'
+import { resolveOnboardingState } from '@/lib/auth-guard'
 import { apiPath, withBasePath } from '@/lib/base-path'
 
 type Friend = {
@@ -27,10 +30,39 @@ type RegisterData = {
   phone: string
 }
 
+function authName(user: User | null): string {
+  if (!user) return ''
+  const fromMeta = typeof user.user_metadata?.full_name === 'string'
+    ? user.user_metadata.full_name
+    : typeof user.user_metadata?.name === 'string'
+    ? user.user_metadata.name
+    : ''
+  if (fromMeta.trim()) return fromMeta.trim()
+  if (typeof user.email === 'string' && user.email.trim()) return user.email.trim()
+  return ''
+}
+
+function authPhone(user: User | null): string {
+  if (!user) return ''
+  const fromMeta = typeof user.user_metadata?.phone_number === 'string'
+    ? user.user_metadata.phone_number
+    : typeof user.user_metadata?.phone === 'string'
+    ? user.user_metadata.phone
+    : ''
+  if (fromMeta.trim()) return fromMeta.trim()
+  if (typeof user.phone === 'string' && user.phone.trim()) return user.phone.trim()
+  return ''
+}
+
 export default function CreateGroup() {
   const router = useRouter()
   const [session, setSession] = useState<SessionData | null>(null)
   const [register, setRegister] = useState<RegisterData | null>(null)
+  const [authUserId, setAuthUserId] = useState<string | null>(null)
+  const [authUserName, setAuthUserName] = useState('')
+  const [authUserPhone, setAuthUserPhone] = useState('')
+  const [authAccessToken, setAuthAccessToken] = useState<string | null>(null)
+  const [passcodeGated, setPasscodeGated] = useState(false)
   const [groupName, setGroupName] = useState('')
   const [passcode, setPasscode] = useState('')
   const [friends, setFriends] = useState<Friend[]>([{ id: '1', name: '', phone: '' }])
@@ -42,10 +74,14 @@ export default function CreateGroup() {
   const [createdGroupPasscode, setCreatedGroupPasscode] = useState('')
 
   useEffect(() => {
-    const loadSession = () => {
+    const loadContext = async () => {
       const rawSession = localStorage.getItem('nearby_session')
       if (rawSession) {
-        setSession(JSON.parse(rawSession) as SessionData)
+        try {
+          setSession(JSON.parse(rawSession) as SessionData)
+        } catch {
+          setSession(null)
+        }
       }
 
       const rawRegister = localStorage.getItem('nearby_register')
@@ -57,13 +93,49 @@ export default function CreateGroup() {
         }
       }
 
-      if (!rawSession && !rawRegister) {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      const sessionUser = sessionData?.session?.user ?? null
+      const sessionUserId = sessionUser?.id ?? null
+
+      console.log('[Nearby][CreateGroup] auth.getSession result:', {
+        hasSession: !!sessionData?.session,
+        sessionUserId,
+        error: sessionError,
+      })
+
+      setAuthUserId(sessionUserId)
+      setAuthUserName(authName(sessionUser))
+      setAuthUserPhone(authPhone(sessionUser))
+      setAuthAccessToken(sessionData?.session?.access_token ?? null)
+
+      const hasLocalAuth = !!rawSession || !!rawRegister
+      const hasSupabaseAuth = !!sessionUserId
+      console.log('[Nearby][CreateGroup] gate inputs:', {
+        hasLocalSession: !!rawSession,
+        hasLocalRegister: !!rawRegister,
+        hasSupabaseAuth,
+      })
+
+      if (!hasLocalAuth && !hasSupabaseAuth) {
+        console.warn('[Nearby][CreateGroup] blocked: no local auth and no Supabase auth session')
         localStorage.setItem('nearby_after_auth', 'create-group')
         setGated(true)
+        return
+      }
+
+      // Require personal passcode before creating a group.
+      const onboarding = await resolveOnboardingState()
+      console.log('[Nearby][CreateGroup] onboarding state:', {
+        personalPasscodeSet: onboarding.personalPasscodeSet,
+        onboardingComplete: onboarding.onboardingComplete,
+      })
+      if (!onboarding.personalPasscodeSet) {
+        console.warn('[Nearby][CreateGroup] blocked: personal passcode not set')
+        setPasscodeGated(true)
       }
     }
 
-    loadSession()
+    void loadContext()
   }, [])
 
   const addFriend = () => {
@@ -83,7 +155,12 @@ export default function CreateGroup() {
     const name = groupName.trim()
     if (!name) { setError('Please enter a group name.'); return }
     if (!passcode.trim()) { setError('Please set a group passcode.'); return }
-    if (!session && !register) {
+
+    const hasSupabaseAuth = !!authUserId
+    const hasLegacyAuth = !!session || !!register
+
+    if (!hasSupabaseAuth && !hasLegacyAuth) {
+      console.warn('[Nearby][CreateGroup] blocked in handleCreate: no auth context')
       setError('Please create an account or sign in before creating a group.')
       return
     }
@@ -92,11 +169,17 @@ export default function CreateGroup() {
     try {
       const response = await fetch(apiPath('/api/groups/create'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authAccessToken ? { Authorization: `Bearer ${authAccessToken}` } : {}),
+        },
         body: JSON.stringify({
           sessionMemberId: session?.memberId,
           requesterUserId: register?.userId,
-          fallbackMemberName: session?.memberName ?? register?.userName ?? 'Member',
+          requesterAuthUserId: authUserId,
+          requesterProfileName: register?.userName ?? authUserName,
+          requesterProfilePhone: register?.phone ?? authUserPhone,
+          fallbackMemberName: session?.memberName ?? register?.userName ?? authUserName ?? 'Member',
           groupName: name,
           passcode: passcode.trim(),
           friends,
@@ -151,6 +234,38 @@ export default function CreateGroup() {
             onPrimary={() => router.push(withBasePath('/register'))}
             secondaryLabel="Sign In"
             onSecondary={() => router.push(withBasePath('/'))}
+          />
+        </div>
+      </main>
+    )
+  }
+
+  if (passcodeGated) {
+    return (
+      <main className="min-h-screen bg-[#f8f8f6]">
+        <AppHeader />
+        <div className="mx-auto max-w-sm px-5 pt-10">
+          <ErrorState
+            title="Set your personal passcode first"
+            message="You need to set a personal passcode before you can create a group. This lets you log in to Nearby."
+            primaryLabel="Set my passcode"
+            onPrimary={() => router.push(withBasePath('/settings?setup=passcode'))}
+          />
+        </div>
+      </main>
+    )
+  }
+
+  if (passcodeGated) {
+    return (
+      <main className="min-h-screen bg-[#f8f8f6]">
+        <AppHeader />
+        <div className="mx-auto max-w-sm px-5 pt-10">
+          <ErrorState
+            title="Set your personal passcode first"
+            message="You need to set a personal passcode before you can create a group. This lets you log in to Nearby."
+            primaryLabel="Set my passcode"
+            onPrimary={() => router.push(withBasePath('/settings?setup=passcode'))}
           />
         </div>
       </main>

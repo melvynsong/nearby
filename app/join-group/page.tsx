@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
+import { resolveUserId, isPasscodeSetLocally } from '@/lib/auth-guard'
 import { apiPath, withBasePath } from '@/lib/base-path'
 
 type SessionData = {
@@ -104,7 +105,17 @@ export default function JoinGroupPage() {
         allGroups: nextGroups,
       }))
 
-      router.push(withBasePath('/nearby'))
+      // Ensure the nearby_register entry has userId for passcode check.
+      const { resolvedUserId } = await resolveUserId()
+      const hasPasscode = isPasscodeSetLocally()
+      console.log('[Nearby][JoinGroup] post-join passcode check:', { resolvedUserId, hasPasscode })
+
+      if (!hasPasscode) {
+        console.log('[Nearby][JoinGroup] passcode not set — redirecting to setup')
+        router.push(withBasePath('/settings?setup=passcode'))
+      } else {
+        router.push(withBasePath('/nearby'))
+      }
     } catch (joinError) {
       console.error('[Nearby][Join] Join group failed:', joinError)
       setError('We could not complete this just now. Please try again.')

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { slugify } from '@/lib/helpers'
 import { getServerSupabaseClient } from '@/lib/server-supabase'
 
@@ -14,12 +15,60 @@ export async function POST(request: NextRequest) {
 
     const sessionMemberId = typeof body?.sessionMemberId === 'string' ? body.sessionMemberId : ''
     const requesterUserId = typeof body?.requesterUserId === 'string' ? body.requesterUserId : ''
+    const requesterAuthUserId = typeof body?.requesterAuthUserId === 'string' ? body.requesterAuthUserId : ''
+    const requesterProfileName = typeof body?.requesterProfileName === 'string' ? body.requesterProfileName.trim() : ''
+    const requesterProfilePhone = typeof body?.requesterProfilePhone === 'string' ? body.requesterProfilePhone.trim() : ''
     const fallbackMemberName = typeof body?.fallbackMemberName === 'string' ? body.fallbackMemberName : ''
     const groupName = typeof body?.groupName === 'string' ? body.groupName.trim() : ''
     const passcode = typeof body?.passcode === 'string' ? body.passcode.trim() : ''
     const friends = Array.isArray(body?.friends) ? (body.friends as FriendInput[]) : []
 
-    if (!sessionMemberId && !requesterUserId) {
+    const authHeader = request.headers.get('authorization') ?? ''
+    const bearerToken = authHeader.toLowerCase().startsWith('bearer ')
+      ? authHeader.slice(7).trim()
+      : ''
+
+    let verifiedAuthUserId = ''
+    if (bearerToken) {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      if (url && anonKey) {
+        const authClient = createClient(url, anonKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        })
+        const { data: authUserResult, error: authUserError } = await authClient.auth.getUser(bearerToken)
+        verifiedAuthUserId = authUserResult.user?.id ?? ''
+        console.log('[Nearby][API][GroupCreate] auth token verification:', {
+          verifiedAuthUserId,
+          hasError: !!authUserError,
+          errorMessage: authUserError?.message ?? null,
+        })
+      }
+    }
+
+    if (verifiedAuthUserId && requesterAuthUserId && verifiedAuthUserId !== requesterAuthUserId) {
+      console.warn('[Nearby][API][GroupCreate] blocked: requester auth user mismatch', {
+        verifiedAuthUserId,
+        requesterAuthUserId,
+      })
+      return NextResponse.json(
+        { ok: false, message: 'Your sign-in session did not match this request. Please sign in again.' },
+        { status: 401 },
+      )
+    }
+
+    const effectiveAuthUserId = verifiedAuthUserId || requesterAuthUserId
+
+    if (!sessionMemberId && !requesterUserId && requesterAuthUserId && !verifiedAuthUserId) {
+      console.warn('[Nearby][API][GroupCreate] blocked: auth user id provided without verifiable auth token')
+      return NextResponse.json(
+        { ok: false, message: 'Your sign-in session is missing or expired. Please sign in again.' },
+        { status: 401 },
+      )
+    }
+
+    if (!sessionMemberId && !requesterUserId && !effectiveAuthUserId) {
+      console.warn('[Nearby][API][GroupCreate] blocked: no auth identity provided')
       return NextResponse.json(
         { ok: false, message: 'Please create an account or sign in before creating a group.' },
         { status: 401 },
@@ -46,10 +95,17 @@ export async function POST(request: NextRequest) {
         .eq('id', sessionMemberId)
         .maybeSingle()
 
+      console.log('[Nearby][API][GroupCreate] creator member lookup:', {
+        sessionMemberId,
+        hasMember: !!creatorMember?.id,
+        creatorUserId: creatorMember?.user_id ?? null,
+        hasError: !!creatorError,
+      })
+
       if (creatorError || !creatorMember?.user_id) {
         console.error('[Nearby][API][GroupCreate] Session validation failed:', creatorError)
         return NextResponse.json(
-          { ok: false, message: 'Please create an account or sign in before creating a group.' },
+          { ok: false, message: 'Your group session is invalid. Please sign in again.' },
           { status: 401 },
         )
       }
@@ -59,23 +115,80 @@ export async function POST(request: NextRequest) {
       const creatorPhone = (creatorMember.users as { phone_number?: string } | null)?.phone_number ?? ''
       creatorPhone4 = (creatorMember.phone_last4 as string | null) ?? phoneLast4(creatorPhone)
     } else {
+      const requestedUserId = requesterUserId || effectiveAuthUserId
       const { data: creatorUser, error: userError } = await supabase
         .from('users')
         .select('id, full_name, phone_number, phone_last4')
-        .eq('id', requesterUserId)
+        .eq('id', requestedUserId)
         .maybeSingle()
 
-      if (userError || !creatorUser?.id) {
+      console.log('[Nearby][API][GroupCreate] profile lookup:', {
+        requestedUserId,
+        hasProfileRow: !!creatorUser?.id,
+        hasError: !!userError,
+      })
+
+      if (userError) {
         console.error('[Nearby][API][GroupCreate] Account validation failed:', userError)
+        return NextResponse.json(
+          { ok: false, message: 'We could not verify your profile. Please try again.' },
+          { status: 500 },
+        )
+      }
+
+      if (creatorUser?.id) {
+        creatorUserId = creatorUser.id
+        creatorName = creatorUser.full_name ?? fallbackMemberName
+        creatorPhone4 = creatorUser.phone_last4 ?? phoneLast4(creatorUser.phone_number ?? '')
+      } else if (effectiveAuthUserId) {
+        const profileName = requesterProfileName || fallbackMemberName || 'Member'
+        const profilePhone = requesterProfilePhone.trim()
+
+        if (!profilePhone) {
+          console.warn('[Nearby][API][GroupCreate] blocked: auth user has no profile row and no phone hint', {
+            effectiveAuthUserId,
+          })
+          return NextResponse.json(
+            { ok: false, message: 'Your profile is missing a phone number. Please complete registration details first.' },
+            { status: 400 },
+          )
+        }
+
+        const { data: insertedProfile, error: insertProfileError } = await supabase
+          .from('users')
+          .upsert({
+            id: effectiveAuthUserId,
+            full_name: profileName,
+            phone_number: profilePhone,
+            phone_last4: phoneLast4(profilePhone),
+          }, { onConflict: 'id' })
+          .select('id, full_name, phone_number, phone_last4')
+          .single()
+
+        console.log('[Nearby][API][GroupCreate] profile upsert for authenticated user:', {
+          effectiveAuthUserId,
+          hasProfile: !!insertedProfile?.id,
+          hasError: !!insertProfileError,
+        })
+
+        if (insertProfileError || !insertedProfile?.id) {
+          console.error('[Nearby][API][GroupCreate] Profile upsert failed:', insertProfileError)
+          return NextResponse.json(
+            { ok: false, message: 'We found your account, but could not complete your profile setup. Please try again.' },
+            { status: 500 },
+          )
+        }
+
+        creatorUserId = insertedProfile.id
+        creatorName = insertedProfile.full_name ?? profileName
+        creatorPhone4 = insertedProfile.phone_last4 ?? phoneLast4(profilePhone)
+      } else {
+        console.warn('[Nearby][API][GroupCreate] blocked: no authenticated user for profile branch')
         return NextResponse.json(
           { ok: false, message: 'Please create an account or sign in before creating a group.' },
           { status: 401 },
         )
       }
-
-      creatorUserId = creatorUser.id
-      creatorName = creatorUser.full_name ?? fallbackMemberName
-      creatorPhone4 = creatorUser.phone_last4 ?? phoneLast4(creatorUser.phone_number ?? '')
     }
 
     if (!creatorPhone4) {

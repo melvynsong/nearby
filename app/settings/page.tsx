@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
 import GroupInviteActions from '@/components/GroupInviteActions'
 import { apiPath, withBasePath } from '@/lib/base-path'
 import { supabase } from '@/lib/supabase'
+import { markPasscodeSet } from '@/lib/auth-guard'
 
 type Session = {
   memberId: string
@@ -28,8 +29,10 @@ type UserProfile = {
   phoneNumber: string
 }
 
-export default function SettingsPage() {
+function SettingsPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const isPasscodeSetup = searchParams.get('setup') === 'passcode'
 
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -38,6 +41,11 @@ export default function SettingsPage() {
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileError, setProfileError] = useState('')
   const [profileSaved, setProfileSaved] = useState(false)
+
+  const [personalPasscode, setPersonalPasscode] = useState('')
+  const [personalPasscodeSaving, setPersonalPasscodeSaving] = useState(false)
+  const [personalPasscodeError, setPersonalPasscodeError] = useState('')
+  const [personalPasscodeSaved, setPersonalPasscodeSaved] = useState(false)
 
   const [groupPasscode, setGroupPasscode] = useState('')
   const [groupPasscodeSaving, setGroupPasscodeSaving] = useState(false)
@@ -201,6 +209,52 @@ export default function SettingsPage() {
     void loadSettings()
   }, [])
 
+  const savePersonalPasscode = async () => {
+    if (!profile) return
+
+    setPersonalPasscodeSaved(false)
+    setPersonalPasscodeError('')
+
+    const code = personalPasscode.trim()
+    if (!code) {
+      setPersonalPasscodeError('Please enter a passcode.')
+      return
+    }
+    if (code.length < 4) {
+      setPersonalPasscodeError('Passcode must be at least 4 characters.')
+      return
+    }
+
+    setPersonalPasscodeSaving(true)
+    try {
+      const response = await fetch(apiPath('/api/settings/personal-passcode'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: profile.userId, passcode: code }),
+      })
+
+      const result = await response.json()
+      if (!response.ok || !result?.ok) {
+        setPersonalPasscodeError(result?.message ?? 'We could not save your passcode. Please try again.')
+        return
+      }
+
+      markPasscodeSet()
+      setPersonalPasscode('')
+      setPersonalPasscodeSaved(true)
+
+      if (isPasscodeSetup) {
+        const hasSession = !!localStorage.getItem('nearby_session')
+        router.push(withBasePath(hasSession ? '/nearby' : '/'))
+      }
+    } catch (error) {
+      console.error('[Nearby][Save][PersonalPasscode] Request failed:', error)
+      setPersonalPasscodeError('We could not save your passcode. Please try again.')
+    } finally {
+      setPersonalPasscodeSaving(false)
+    }
+  }
+
   const saveProfile = async () => {
     if (!profile) return
 
@@ -307,6 +361,11 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-bold tracking-tight text-neutral-900">Settings</h1>
         <p className="mt-1 text-sm text-neutral-500">Update your profile and group passcode settings.</p>
 
+        {isPasscodeSetup && (
+          <div className="mt-4 rounded-xl border border-teal-300 bg-teal-50 px-4 py-3 text-sm text-teal-800">
+            <span className="font-semibold">One more step:</span> set your personal passcode below to start using Nearby.
+          </div>
+        )}
         {loading ? (
           <p className="mt-6 text-sm text-neutral-400">Loading settings...</p>
         ) : loadError ? (
@@ -356,6 +415,42 @@ export default function SettingsPage() {
                 className="mt-4 w-full rounded-xl bg-teal-700 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-teal-800 disabled:opacity-50"
               >
                 {profileSaving ? 'Saving...' : 'Save profile'}
+              </button>
+            </section>
+
+            <section className={`rounded-2xl border bg-white p-5 shadow-sm ${isPasscodeSetup ? 'border-teal-400 ring-2 ring-teal-100' : 'border-neutral-200'}`}>
+              <h2 className="text-sm font-semibold text-neutral-900">Your personal passcode</h2>
+              <p className="mt-1 text-xs text-neutral-500">
+                {isPasscodeSetup
+                  ? 'Set a personal passcode to unlock Nearby. You will use this to log in.'
+                  : 'Used to log in to Nearby. Choose something only you know.'}
+              </p>
+
+              <div className="mt-4">
+                <label className="mb-1.5 block text-sm font-medium text-neutral-700">
+                  {isPasscodeSetup ? 'Create your personal passcode' : 'New personal passcode'}
+                </label>
+                <input
+                  type="password"
+                  value={personalPasscode}
+                  onChange={(e) => setPersonalPasscode(e.target.value)}
+                  placeholder="At least 4 characters"
+                  className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                />
+                <p className="mt-1.5 text-xs text-neutral-400">
+                  This is separate from your group passcode. Keep it private.
+                </p>
+              </div>
+
+              {personalPasscodeError && <p className="mt-3 text-sm text-amber-700">{personalPasscodeError}</p>}
+              {personalPasscodeSaved && !isPasscodeSetup && <p className="mt-3 text-sm text-teal-700">Personal passcode saved.</p>}
+
+              <button
+                onClick={savePersonalPasscode}
+                disabled={personalPasscodeSaving}
+                className="mt-4 w-full rounded-xl bg-teal-700 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-teal-800 disabled:opacity-50"
+              >
+                {personalPasscodeSaving ? 'Saving...' : isPasscodeSetup ? 'Set passcode and continue' : 'Save personal passcode'}
               </button>
             </section>
 
@@ -418,5 +513,13 @@ export default function SettingsPage() {
         ) : null}
       </div>
     </main>
+  )
+}
+
+export default function SettingsPageWrapper() {
+  return (
+    <Suspense fallback={null}>
+      <SettingsPage />
+    </Suspense>
   )
 }
