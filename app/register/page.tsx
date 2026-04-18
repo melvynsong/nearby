@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { phoneLast4 } from '@/lib/helpers'
+import AppHeader from '@/components/AppHeader'
 
 export default function Register() {
   const router = useRouter()
@@ -53,7 +54,8 @@ export default function Register() {
           .single()
 
         if (insertErr || !inserted) {
-          throw new Error(insertErr?.message ?? 'Failed to register.')
+          console.error('[Nearby][Save] Register insert failed:', insertErr)
+          throw new Error('REGISTER_INSERT_FAILED')
         }
         userId = inserted.id
       }
@@ -62,7 +64,8 @@ export default function Register() {
       localStorage.setItem('nearby_register', JSON.stringify({ userId, userName: name, phone4: last4, phone: ph }))
       setDone(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.')
+      console.error('[Nearby][Save] Register failed:', err)
+      setError('We could not save your changes. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -70,7 +73,9 @@ export default function Register() {
 
   if (done) {
     return (
-      <main className="min-h-screen bg-[#f8f8f6] flex items-center justify-center px-5 py-12">
+      <main className="min-h-screen bg-[#f8f8f6]">
+        <AppHeader />
+        <div className="flex items-center justify-center px-5 py-12">
         <div className="w-full max-w-sm rounded-2xl bg-white border border-neutral-200 p-7 shadow-sm text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-teal-50">
             <span className="text-2xl">✓</span>
@@ -92,12 +97,15 @@ export default function Register() {
             Go to login
           </button>
         </div>
+        </div>
       </main>
     )
   }
 
   return (
-    <main className="min-h-screen bg-[#f8f8f6] flex items-center justify-center px-5 py-12">
+    <main className="min-h-screen bg-[#f8f8f6]">
+      <AppHeader />
+      <div className="flex items-center justify-center px-5 py-12">
       <div className="w-full max-w-sm rounded-2xl bg-white border border-neutral-200 p-7 shadow-sm">
         <h1 className="text-xl font-bold text-neutral-900">Create account</h1>
         <p className="mt-1 text-sm text-neutral-500">
@@ -167,6 +175,7 @@ export default function Register() {
             </button>
           </p>
         </div>
+      </div>
       </div>
     </main>
   )

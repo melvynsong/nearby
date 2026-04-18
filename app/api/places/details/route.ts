@@ -5,13 +5,13 @@ export async function POST(request: NextRequest) {
     const { placeId } = await request.json()
 
     if (!placeId || typeof placeId !== 'string') {
-      return Response.json({ error: 'placeId is required' }, { status: 400 })
+      return Response.json({ error: 'Please choose a place and try again.' }, { status: 400 })
     }
 
     const apiKey = process.env.GOOGLE_PLACES_SERVER_KEY
     if (!apiKey) {
-      console.error('[details] GOOGLE_PLACES_SERVER_KEY is not set')
-      return Response.json({ error: 'Server configuration error' }, { status: 500 })
+      console.error('[Nearby][API] Place details key missing')
+      return Response.json({ error: 'Something did not go through. Please try again.' }, { status: 500 })
     }
 
     const fields = [
@@ -34,8 +34,8 @@ export async function POST(request: NextRequest) {
 
     if (!res.ok) {
       const text = await res.text()
-      console.error('[details] Google API error:', res.status, text)
-      return Response.json({ error: 'Place details request failed' }, { status: 502 })
+      console.error('[Nearby][API] Place details provider failed:', res.status, text)
+      return Response.json({ error: 'Connection issue. Please check your network and try again.' }, { status: 502 })
     }
 
     const data = await res.json()
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
       map_preview_url: mapPreviewUrl,
     })
   } catch (err) {
-    console.error('[details] unexpected error:', err)
-    return Response.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('[Nearby][API] Place details unexpected error:', err)
+    return Response.json({ error: 'Something did not go through. Please try again.' }, { status: 500 })
   }
 }

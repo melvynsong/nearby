@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     const { lat, lng } = await request.json()
 
     if (typeof lat !== 'number' || typeof lng !== 'number') {
-      return Response.json({ error: 'lat and lng are required numbers' }, { status: 400 })
+      return Response.json({ error: 'Location could not be used right now.' }, { status: 400 })
     }
 
     const apiKey = process.env.GOOGLE_PLACES_SERVER_KEY

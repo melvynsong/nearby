@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import ErrorState from '@/components/ErrorState'
 
 type GroupEntry = {
   memberId: string
@@ -17,6 +18,7 @@ export default function Home() {
   const [passcode, setPasscode] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showLoginErrorCard, setShowLoginErrorCard] = useState(false)
 
   useEffect(() => {
     const session = localStorage.getItem('nearby_session')
@@ -25,6 +27,7 @@ export default function Home() {
 
   const handleEnter = async () => {
     setError('')
+    setShowLoginErrorCard(false)
 
     if (last4.length !== 4 || !/^\d{4}$/.test(last4)) {
       setError('Enter the last 4 digits of your mobile.')
@@ -37,88 +40,95 @@ export default function Home() {
 
     setLoading(true)
 
-    // Fetch all members with this phone_last4
-    const { data: members } = await supabase
-      .from('members')
-      .select('id, display_name, group_id, user_id')
-      .eq('phone_last4', last4)
+    try {
+      // Fetch all members with this phone_last4
+      const { data: members } = await supabase
+        .from('members')
+        .select('id, display_name, group_id, user_id')
+        .eq('phone_last4', last4)
 
-    if (!members || members.length === 0) {
-      setError('Incorrect details.')
-      setLoading(false)
-      return
-    }
-
-    // Fetch all groups for those members
-    const groupIds = members.map((m) => m.group_id)
-    const { data: groups } = await supabase
-      .from('groups')
-      .select('id, name, access_code')
-      .in('id', groupIds)
-
-    // Fetch personal passcodes for users behind these member records.
-    const userIds = [...new Set(members.map((m) => m.user_id).filter(Boolean))]
-    const { data: users } = await supabase
-      .from('users')
-      .select('id, personal_passcode')
-      .in('id', userIds)
-
-    // Match either group passcode or personal passcode.
-    let matched: (GroupEntry & { userId: string }) | null = null
-    const trimmedPasscode = passcode.trim()
-
-    for (const member of members) {
-      const group = groups?.find((g) => g.id === member.group_id)
-      const user = users?.find((u) => u.id === member.user_id)
-      const matchGroupPasscode = group?.access_code === trimmedPasscode
-      const matchPersonalPasscode = user?.personal_passcode === trimmedPasscode
-
-      if (group && member.user_id && (matchGroupPasscode || matchPersonalPasscode)) {
-        matched = {
-          userId: member.user_id,
-          memberId: member.id,
-          memberName: member.display_name,
-          groupId: group.id,
-          groupName: group.name,
-        }
-        break
+      if (!members || members.length === 0) {
+        setError('Incorrect details.')
+        setLoading(false)
+        return
       }
-    }
 
-    if (!matched) {
-      setError('Incorrect details.')
+      // Fetch all groups for those members
+      const groupIds = members.map((m) => m.group_id)
+      const { data: groups } = await supabase
+        .from('groups')
+        .select('id, name, access_code')
+        .in('id', groupIds)
+
+      // Fetch personal passcodes for users behind these member records.
+      const userIds = [...new Set(members.map((m) => m.user_id).filter(Boolean))]
+      const { data: users } = await supabase
+        .from('users')
+        .select('id, personal_passcode')
+        .in('id', userIds)
+
+      // Match either group passcode or personal passcode.
+      let matched: (GroupEntry & { userId: string }) | null = null
+      const trimmedPasscode = passcode.trim()
+
+      for (const member of members) {
+        const group = groups?.find((g) => g.id === member.group_id)
+        const user = users?.find((u) => u.id === member.user_id)
+        const matchGroupPasscode = group?.access_code === trimmedPasscode
+        const matchPersonalPasscode = user?.personal_passcode === trimmedPasscode
+
+        if (group && member.user_id && (matchGroupPasscode || matchPersonalPasscode)) {
+          matched = {
+            userId: member.user_id,
+            memberId: member.id,
+            memberName: member.display_name,
+            groupId: group.id,
+            groupName: group.name,
+          }
+          break
+        }
+      }
+
+      if (!matched) {
+        setError('Incorrect details.')
+        setLoading(false)
+        return
+      }
+
+      // Build allGroups from memberships for the matched user only.
+      const { data: userMembers } = await supabase
+        .from('members')
+        .select('id, display_name, group_id')
+        .eq('user_id', matched.userId)
+
+      const userGroupIds = (userMembers ?? []).map((m) => m.group_id)
+      const { data: userGroups } = await supabase
+        .from('groups')
+        .select('id, name')
+        .in('id', userGroupIds)
+
+      const allGroups: GroupEntry[] = (userMembers ?? [])
+        .map((m) => {
+          const g = userGroups?.find((g) => g.id === m.group_id)
+          if (!g) return null
+          return { memberId: m.id, memberName: m.display_name, groupId: g.id, groupName: g.name }
+        })
+        .filter(Boolean) as GroupEntry[]
+
+      localStorage.setItem('nearby_session', JSON.stringify({
+        memberId: matched.memberId,
+        memberName: matched.memberName,
+        groupId: matched.groupId,
+        groupName: matched.groupName,
+        allGroups,
+      }))
+      router.push('/nearby')
+    } catch (err) {
+      console.error('[Nearby][API] Login failed:', err)
+      setError('We could not complete this just now. Please try again.')
+      setShowLoginErrorCard(true)
       setLoading(false)
-      return
     }
-
-    // Build allGroups from memberships for the matched user only.
-    const { data: userMembers } = await supabase
-      .from('members')
-      .select('id, display_name, group_id')
-      .eq('user_id', matched.userId)
-
-    const userGroupIds = (userMembers ?? []).map((m) => m.group_id)
-    const { data: userGroups } = await supabase
-      .from('groups')
-      .select('id, name')
-      .in('id', userGroupIds)
-
-    const allGroups: GroupEntry[] = (userMembers ?? [])
-      .map((m) => {
-        const g = userGroups?.find((g) => g.id === m.group_id)
-        if (!g) return null
-        return { memberId: m.id, memberName: m.display_name, groupId: g.id, groupName: g.name }
-      })
-      .filter(Boolean) as GroupEntry[]
-
-    localStorage.setItem('nearby_session', JSON.stringify({
-      memberId: matched.memberId,
-      memberName: matched.memberName,
-      groupId: matched.groupId,
-      groupName: matched.groupName,
-      allGroups,
-    }))
-    router.push('/nearby')
   }
 
   return (
@@ -126,15 +136,34 @@ export default function Home() {
       {/* Logo */}
       <div className="mb-8 flex flex-col items-center gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/nearby_logo.png" alt="Nearby" className="h-14 w-14 rounded-2xl shadow-sm" />
-        <div className="text-center">
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-900">Nearby</h1>
-          <p className="mt-1 text-sm text-neutral-500">Trusted food spots from your circle</p>
-        </div>
-        <span className="beta-pulse inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-600">
+        <img src="/nearby_logo.png" alt="Nearby" className="h-10 w-auto" />
+        <span className="beta-pulse inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-600 dark:bg-orange-900/30 dark:text-orange-300">
           Beta
         </span>
       </div>
+
+      <section className="mb-8 w-full max-w-xl text-center">
+        <h1 className="text-3xl font-bold tracking-tight text-neutral-900 sm:text-4xl">
+          Discover good places nearby, together.
+        </h1>
+        <p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-neutral-600 sm:text-base">
+          Nearby helps you find, save, and share useful places around you - from food spots to meetup ideas and local finds. Build groups, add places, and make it easier for everyone to decide where to go next.
+        </p>
+        <div className="mx-auto mt-5 flex w-full max-w-sm flex-col gap-2 sm:flex-row">
+          <button
+            onClick={() => router.push('/create-group')}
+            className="w-full rounded-xl bg-teal-700 px-5 py-3 text-sm font-medium text-white transition-transform hover:scale-[1.02] hover:bg-teal-800 active:scale-[0.99]"
+          >
+            Create a Group
+          </button>
+          <button
+            onClick={() => router.push('/add-place')}
+            className="w-full rounded-xl border border-neutral-300 bg-white px-5 py-3 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
+          >
+            Add a Place
+          </button>
+        </div>
+      </section>
 
       <div className="w-full max-w-sm rounded-2xl bg-white border border-neutral-200 p-7 shadow-sm">
         <div className="space-y-5">
@@ -169,7 +198,15 @@ export default function Home() {
             </p>
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && !showLoginErrorCard && <p className="text-sm text-red-600">{error}</p>}
+
+          {showLoginErrorCard && (
+            <ErrorState
+              title="Something did not go through"
+              message="We could not complete this just now. Please try again."
+              onPrimary={handleEnter}
+            />
+          )}
 
           <button
             onClick={handleEnter}

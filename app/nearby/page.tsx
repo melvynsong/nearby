@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { haversineDistanceKm, formatDistance, getInitials } from '@/lib/nearby-helpers'
 import CreateGroupModal, { type GroupEntry as ModalGroupEntry } from '@/components/CreateGroupModal'
 import AppHeader from '@/components/AppHeader'
+import ErrorState from '@/components/ErrorState'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -64,6 +65,7 @@ export default function NearbyHome() {
   // Places
   const [places, setPlaces] = useState<PlaceCard[]>([])
   const [placesLoading, setPlacesLoading] = useState(true)
+  const [placesError, setPlacesError] = useState(false)
 
   // Category filter
   const [groupCategories, setGroupCategories] = useState<Category[]>([])
@@ -94,6 +96,7 @@ export default function NearbyHome() {
   const fetchPlaces = useCallback(async (groupId: string) => {
     console.log('[Places] fetch start, groupId:', groupId)
     setPlacesLoading(true)
+    setPlacesError(false)
 
     const controller = new AbortController()
     const timer = setTimeout(() => { console.warn('[Places] fetch timed out'); controller.abort() }, 12000)
@@ -112,7 +115,11 @@ export default function NearbyHome() {
         .order('created_at', { ascending: false })
         .abortSignal(controller.signal)
 
-      if (error) { console.error('[Places] fetch error:', error.message); return }
+      if (error) {
+        console.error('[Nearby][API] Places fetch failed:', error)
+        setPlacesError(true)
+        return
+      }
 
       const map = new Map<string, PlaceCard>()
       for (const r of (data ?? []) as any[]) {
@@ -144,6 +151,9 @@ export default function NearbyHome() {
 
       console.log('[Places] fetch success, places:', map.size)
       setPlaces([...map.values()])
+    } catch (error) {
+      console.error('[Nearby][API] Places fetch crashed:', error)
+      setPlacesError(true)
     } finally {
       clearTimeout(timer)
       setPlacesLoading(false)
@@ -337,6 +347,9 @@ export default function NearbyHome() {
         right={
           <div className="flex flex-col items-end gap-0.5">
             <p className="text-xs font-medium text-neutral-700 leading-none">{session.memberName}</p>
+            <button onClick={() => router.push('/settings')} className="text-[11px] text-neutral-400 hover:text-neutral-600 transition-colors">
+              Settings
+            </button>
             <button onClick={handleLogout} className="text-[11px] text-neutral-400 hover:text-neutral-600 transition-colors">
               Logout
             </button>
@@ -444,6 +457,12 @@ export default function NearbyHome() {
       <div className="px-5 max-w-md mx-auto space-y-4">
         {placesLoading ? (
           <p className="text-sm text-neutral-400 text-center py-20">Loading…</p>
+        ) : placesError ? (
+          <ErrorState
+            title="Something did not go through"
+            message="We could not load places right now. Please try again."
+            onPrimary={() => fetchPlaces(activeGroup.groupId)}
+          />
         ) : displayed.length === 0 ? (
           <div className="rounded-2xl bg-white border border-neutral-200 p-8 text-center shadow-sm mt-4">
             <p className="text-lg font-semibold text-neutral-900">
@@ -517,9 +536,15 @@ export default function NearbyHome() {
                   )}
 
                   {/* Initials */}
-                  <div className="flex gap-1 flex-wrap">
-                    {initials.map((ini) => (
-                      <span key={ini} className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">{ini}</span>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {initials.map((ini, idx) => (
+                      <span
+                        key={`${place.place_id}-${ini}-${idx}`}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-neutral-200 text-[11px] font-semibold text-neutral-700"
+                        title={ini}
+                      >
+                        {ini}
+                      </span>
                     ))}
                   </div>
 

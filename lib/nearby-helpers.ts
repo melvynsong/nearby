@@ -21,12 +21,11 @@ export function formatDistance(km: number): string {
 }
 
 export function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
+  if (!name) return ''
+  const parts = name.trim().split(' ').filter(Boolean)
+  const first = parts[0]?.[0] || ''
+  const second = parts[1]?.[0] || ''
+  return (first + second).toUpperCase()
 }
 
 type PlaceForShare = {

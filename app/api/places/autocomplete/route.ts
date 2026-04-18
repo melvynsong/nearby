@@ -63,8 +63,8 @@ export async function POST(request: NextRequest) {
 
     const apiKey = process.env.GOOGLE_PLACES_SERVER_KEY
     if (!apiKey) {
-      console.error('[autocomplete] GOOGLE_PLACES_SERVER_KEY is not set')
-      return Response.json({ error: 'Server configuration error' }, { status: 500 })
+      console.error('[Nearby][API] Autocomplete key missing')
+      return Response.json({ error: 'Something did not go through. Please try again.' }, { status: 500 })
     }
 
     const regionCode = hasLocation ? await resolveRegionCode(apiKey, lat, lng) : null
@@ -102,8 +102,8 @@ export async function POST(request: NextRequest) {
 
     if (!res.ok) {
       const text = await res.text()
-      console.error('[autocomplete] Google API error:', res.status, text)
-      return Response.json({ error: 'Autocomplete request failed' }, { status: 502 })
+      console.error('[Nearby][API] Autocomplete provider failed:', res.status, text)
+      return Response.json({ error: 'Connection issue. Please check your network and try again.' }, { status: 502 })
     }
 
     const data = await res.json()
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
 
     return Response.json({ predictions })
   } catch (err) {
-    console.error('[autocomplete] unexpected error:', err)
-    return Response.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('[Nearby][API] Autocomplete unexpected error:', err)
+    return Response.json({ error: 'Something did not go through. Please try again.' }, { status: 500 })
   }
 }

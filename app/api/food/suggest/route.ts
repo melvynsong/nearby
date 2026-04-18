@@ -198,7 +198,7 @@ async function requestAiSuggestion(apiKey: string, imageUrl: string): Promise<Fo
 export async function POST(req: NextRequest) {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
-    return NextResponse.json({ error: 'OpenAI not configured' }, { status: 500 })
+    return NextResponse.json({ error: 'We could not analyse this right now. Try again shortly.' }, { status: 500 })
   }
 
   let imageUrl: string | null = null
@@ -231,18 +231,18 @@ export async function POST(req: NextRequest) {
       }
     }
   } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+    return NextResponse.json({ error: 'We could not analyse this right now. Please try again.' }, { status: 400 })
   }
 
   if (!imageUrl) {
-    return NextResponse.json({ error: 'image or imageUrl is required' }, { status: 400 })
+    return NextResponse.json({ error: 'Please provide a photo and try again.' }, { status: 400 })
   }
 
   try {
     const suggestion = await requestAiSuggestion(apiKey, imageUrl)
     return NextResponse.json(suggestion)
   } catch (err) {
-    console.error('[food/suggest] error:', err)
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Internal server error' }, { status: 500 })
+    console.error('[Nearby][AI] Food suggestion failed:', err)
+    return NextResponse.json({ error: 'We could not analyse this right now. Try again or adjust your input.' }, { status: 500 })
   }
 }

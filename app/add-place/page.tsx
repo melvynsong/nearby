@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import AppHeader from '@/components/AppHeader'
+import ErrorState from '@/components/ErrorState'
 import { supabase } from '@/lib/supabase'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -143,7 +144,7 @@ export default function AddPlace() {
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [failedStage, setFailedStage] = useState('')
+  const [showSaveErrorCard, setShowSaveErrorCard] = useState(false)
 
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null)
 
@@ -211,6 +212,7 @@ export default function AddPlace() {
       const data = await res.json()
 
       if (data.error) {
+        console.error('[Nearby][AI] Analysis failed:', data)
         setAiError('Photo analysis failed. You can type the dish name below.')
         setFlowState('analysis_error')
         return
@@ -225,8 +227,9 @@ export default function AddPlace() {
       }
 
       setFlowState('analysis_success')
-    } catch {
-      setAiError('Could not analyze this photo.')
+    } catch (error) {
+      console.error('[Nearby][AI] Analysis request failed:', error)
+      setAiError('We could not analyse this right now. Try again or adjust your input.')
       setFlowState('analysis_error')
     }
   }, [])
@@ -253,7 +256,8 @@ export default function AddPlace() {
       setFlowState('converting_image')
       try {
         processedFile = await convertHeicToJpeg(file)
-      } catch {
+      } catch (error) {
+        console.error('[Nearby][AI] HEIC conversion failed:', error)
         setAiError('Could not read this image format. Please try a JPEG or PNG.')
         setFlowState('analysis_error')
         return
@@ -307,6 +311,7 @@ export default function AddPlace() {
     setPredictions([])
     setLoadingDetails(true)
     setError('')
+    setShowSaveErrorCard(false)
     try {
       const res = await fetch('/api/places/details', {
         method: 'POST',
@@ -314,10 +319,14 @@ export default function AddPlace() {
         body: JSON.stringify({ placeId: prediction.placeId }),
       })
       const data = await res.json()
-      if (data.error) setError(`Could not load place details: ${data.error}`)
+      if (data.error) {
+        console.error('[Nearby][API] Place details failed:', data)
+        setError('We could not load place details right now. Please try again.')
+      }
       else setSelectedPlace(data)
-    } catch {
-      setError('Failed to load place details. Please try again.')
+    } catch (error) {
+      console.error('[Nearby][API] Place details request failed:', error)
+      setError('Connection issue. Please check your network and try again.')
     } finally {
       setLoadingDetails(false)
     }
@@ -377,7 +386,7 @@ export default function AddPlace() {
 
   const handleSave = async () => {
     setError('')
-    setFailedStage('')
+    setShowSaveErrorCard(false)
 
     if (!session?.memberId || !session?.groupId) {
       setError('Session missing. Please log in again.')
@@ -408,8 +417,8 @@ export default function AddPlace() {
         .maybeSingle()
 
       if (lookupError) {
-        setFailedStage('Failed at place lookup')
-        throw new Error(`Failed at place lookup: ${lookupError.message}`)
+        console.error('[Nearby][Save] Place lookup failed:', lookupError)
+        throw new Error('SAVE_LOOKUP_FAILED')
       }
 
       if (existing) {
@@ -434,8 +443,8 @@ export default function AddPlace() {
           .single()
 
         if (insertError || !inserted) {
-          setFailedStage('Failed at place insert')
-          throw new Error(`Failed at place insert: ${insertError?.message ?? 'no data returned'}`)
+          console.error('[Nearby][Save] Place insert failed:', insertError)
+          throw new Error('SAVE_PLACE_INSERT_FAILED')
         }
 
         placeId = inserted.id
@@ -451,8 +460,8 @@ export default function AddPlace() {
           .upload(path, selectedFile, { upsert: false })
 
         if (uploadError) {
-          setFailedStage('Failed at photo upload')
-          throw new Error(`Failed at photo upload: ${uploadError.message}`)
+          console.error('[Nearby][Save] Photo upload failed:', uploadError)
+          throw new Error('SAVE_PHOTO_UPLOAD_FAILED')
         }
 
         const { data: urlData } = supabase.storage.from('nearby-place-photos').getPublicUrl(path)
@@ -467,8 +476,8 @@ export default function AddPlace() {
           .eq('id', placeId)
 
         if (updateError) {
-          setFailedStage('Failed at place photo update')
-          throw new Error(`Failed at place photo update: ${updateError.message}`)
+          console.error('[Nearby][Save] Place photo update failed:', updateError)
+          throw new Error('SAVE_PHOTO_UPDATE_FAILED')
         }
       }
 
@@ -480,8 +489,8 @@ export default function AddPlace() {
       })
 
       if (recError) {
-        setFailedStage('Failed at recommendation insert')
-        throw new Error(`Failed at recommendation insert: ${recError.message}`)
+        console.error('[Nearby][Save] Recommendation insert failed:', recError)
+        throw new Error('SAVE_RECOMMENDATION_FAILED')
       }
 
       const { error: placeCatError } = await supabase
@@ -489,13 +498,15 @@ export default function AddPlace() {
         .upsert({ place_id: placeId, category_id: categoryId }, { onConflict: 'place_id,category_id' })
 
       if (placeCatError) {
-        setFailedStage('Failed at category link')
-        throw new Error(`Failed at category link: ${placeCatError.message}`)
+        console.error('[Nearby][Save] Category link failed:', placeCatError)
+        throw new Error('SAVE_CATEGORY_LINK_FAILED')
       }
 
       router.push('/nearby')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.')
+      console.error('[Nearby][Save] Save food spot failed:', err)
+      setError('We could not save your changes. Please try again.')
+      setShowSaveErrorCard(true)
       setSaving(false)
     }
   }
@@ -610,7 +621,18 @@ export default function AddPlace() {
               {flowState === 'analysis_error' && (
                 <>
                   <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-2">Dish</p>
-                  {aiError && <p className="mb-3 text-sm text-amber-700">{aiError}</p>}
+                  <ErrorState
+                    title="Something did not go through"
+                    message={aiError || 'We could not analyse this right now. Try again or adjust your input.'}
+                    onPrimary={() => {
+                      if (selectedFile) void runAnalysis(selectedFile)
+                    }}
+                    secondaryLabel="Continue manually"
+                    onSecondary={() => {
+                      setAiError('')
+                      setFlowState('analysis_success')
+                    }}
+                  />
                   <input
                     type="text"
                     value={customDish}
@@ -836,11 +858,16 @@ export default function AddPlace() {
           )}
 
           {/* ── Error ───────────────────────────────────────────────── */}
-          {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-              {failedStage && <p className="text-xs font-semibold uppercase tracking-wide text-red-500">{failedStage}</p>}
-              <p className="text-sm text-red-700 break-words">{error}</p>
-            </div>
+          {error && !showSaveErrorCard && <p className="text-sm text-amber-700 break-words">{error}</p>}
+
+          {showSaveErrorCard && (
+            <ErrorState
+              title="Something did not go through"
+              message="We could not save your changes. Please try again."
+              onPrimary={handleSave}
+              secondaryLabel="Go Back"
+              onSecondary={() => router.back()}
+            />
           )}
 
           {/* ── Save button ─────────────────────────────────────────── */}

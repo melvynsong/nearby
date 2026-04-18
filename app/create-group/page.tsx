@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { phoneLast4, slugify } from '@/lib/helpers'
+import AppHeader from '@/components/AppHeader'
 
 type Friend = {
   id: string   // local key only
@@ -100,7 +101,10 @@ export default function CreateGroup() {
       .select('id')
       .single()
 
-    if (error || !inserted) throw new Error(`Could not create user for ${fullName}: ${error?.message}`)
+    if (error || !inserted) {
+      console.error('[Nearby][Save] Create user failed:', error)
+      throw new Error('CREATE_USER_FAILED')
+    }
     return inserted.id
   }
 
@@ -122,7 +126,10 @@ export default function CreateGroup() {
       .select('id')
       .single()
 
-    if (error || !inserted) throw new Error(`Could not add member ${displayName}: ${error?.message}`)
+    if (error || !inserted) {
+      console.error('[Nearby][Save] Create member failed:', error)
+      throw new Error('CREATE_MEMBER_FAILED')
+    }
     return inserted.id
   }
 
@@ -143,13 +150,32 @@ export default function CreateGroup() {
     try {
       // 1. Create the group
       const slug = slugify(name)
-      const { data: group, error: groupErr } = await supabase
+      let group: { id: string } | null = null
+      let groupErr: { message?: string } | null = null
+
+      const firstAttempt = await supabase
         .from('groups')
-        .insert({ name, slug, access_code: passcode.trim() })
+        .insert({ name, slug, access_code: passcode.trim(), created_by_user_id: register.userId })
         .select('id')
         .single()
 
-      if (groupErr || !group) throw new Error(`Failed to create group: ${groupErr?.message}`)
+      group = firstAttempt.data
+      groupErr = firstAttempt.error
+
+      if (groupErr?.message?.includes('created_by_user_id')) {
+        const fallbackAttempt = await supabase
+          .from('groups')
+          .insert({ name, slug, access_code: passcode.trim() })
+          .select('id')
+          .single()
+        group = fallbackAttempt.data
+        groupErr = fallbackAttempt.error
+      }
+
+      if (groupErr || !group) {
+        console.error('[Nearby][Save] Create group failed:', groupErr)
+        throw new Error('CREATE_GROUP_FAILED')
+      }
       const groupId = group.id
 
       // 2. Add creator as member + group membership
@@ -181,7 +207,8 @@ export default function CreateGroup() {
 
       setDone(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.')
+      console.error('[Nearby][Save] Group creation failed:', err)
+      setError('We could not save your changes. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -189,7 +216,9 @@ export default function CreateGroup() {
 
   if (done) {
     return (
-      <main className="min-h-screen bg-[#f8f8f6] flex items-center justify-center px-5 py-12">
+      <main className="min-h-screen bg-[#f8f8f6]">
+        <AppHeader />
+        <div className="flex items-center justify-center px-5 py-12">
         <div className="w-full max-w-sm rounded-2xl bg-white border border-neutral-200 p-7 shadow-sm text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-teal-50">
             <span className="text-2xl">✓</span>
@@ -205,12 +234,14 @@ export default function CreateGroup() {
             Go to Nearby
           </button>
         </div>
+        </div>
       </main>
     )
   }
 
   return (
     <main className="min-h-screen bg-[#f8f8f6] px-5 py-8 pb-20">
+      <AppHeader />
       <div className="max-w-sm mx-auto">
         <button
           onClick={() => router.back()}

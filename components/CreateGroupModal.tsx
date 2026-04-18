@@ -88,7 +88,8 @@ export default function CreateGroupModal({
       .single()
 
     if (insertError || !inserted?.id) {
-      throw new Error(insertError?.message ?? `Could not create user ${fullName}`)
+      console.error('[Nearby][Save] Modal create user failed:', insertError)
+      throw new Error('CREATE_USER_FAILED')
     }
 
     return inserted.id
@@ -121,7 +122,8 @@ export default function CreateGroupModal({
       .single()
 
     if (insertError || !inserted?.id) {
-      throw new Error(insertError?.message ?? `Could not add member ${displayName}`)
+      console.error('[Nearby][Save] Modal create member failed:', insertError)
+      throw new Error('CREATE_MEMBER_FAILED')
     }
 
     return inserted.id
@@ -169,14 +171,31 @@ export default function CreateGroupModal({
       const creatorName = (creatorMember.display_name as string | null) ?? fallbackMemberName
       const slug = slugify(name)
 
-      const { data: group, error: groupError } = await supabase
+      let group: { id: string } | null = null
+      let groupError: { message?: string } | null = null
+
+      const firstAttempt = await supabase
         .from('groups')
-        .insert({ name, slug, access_code: accessCode })
+        .insert({ name, slug, access_code: accessCode, created_by_user_id: creatorMember.user_id as string })
         .select('id')
         .single()
 
+      group = firstAttempt.data
+      groupError = firstAttempt.error
+
+      if (groupError?.message?.includes('created_by_user_id')) {
+        const fallbackAttempt = await supabase
+          .from('groups')
+          .insert({ name, slug, access_code: accessCode })
+          .select('id')
+          .single()
+        group = fallbackAttempt.data
+        groupError = fallbackAttempt.error
+      }
+
       if (groupError || !group?.id) {
-        throw new Error(groupError?.message ?? 'Failed to create group.')
+        console.error('[Nearby][Save] Modal create group failed:', groupError)
+        throw new Error('CREATE_GROUP_FAILED')
       }
 
       const groupId = group.id
@@ -202,7 +221,8 @@ export default function CreateGroupModal({
 
       close()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create group.')
+      console.error('[Nearby][Save] Modal group creation failed:', err)
+      setError('We could not save your changes. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -230,7 +250,7 @@ export default function CreateGroupModal({
               value={groupName}
               onChange={(e) => setGroupName(e.target.value)}
               placeholder="e.g. Friday Makan Crew"
-              className="w-full rounded-xl border border-neutral-300 px-3 py-2.5 text-sm outline-none focus:border-neutral-500"
+              className="w-full rounded-xl border border-neutral-300 px-3 py-2.5 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
             />
           </div>
 
@@ -241,7 +261,7 @@ export default function CreateGroupModal({
               value={passcode}
               onChange={(e) => setPasscode(e.target.value)}
               placeholder="Shared login passcode"
-              className="w-full rounded-xl border border-neutral-300 px-3 py-2.5 text-sm outline-none focus:border-neutral-500"
+              className="w-full rounded-xl border border-neutral-300 px-3 py-2.5 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
             />
           </div>
 
@@ -256,14 +276,14 @@ export default function CreateGroupModal({
                       value={friend.name}
                       onChange={(e) => updateFriend(friend.id, 'name', e.target.value)}
                       placeholder={`Friend ${idx + 1} name`}
-                      className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-500"
+                      className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
                     />
                     <input
                       type="tel"
                       value={friend.phone}
                       onChange={(e) => updateFriend(friend.id, 'phone', e.target.value)}
                       placeholder="Phone number"
-                      className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-500"
+                      className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
                     />
                   </div>
                   {friends.length > 1 && (
@@ -287,7 +307,7 @@ export default function CreateGroupModal({
           <button
             onClick={handleCreate}
             disabled={loading}
-            className="w-full rounded-xl bg-neutral-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
+            className="w-full rounded-xl bg-teal-700 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-teal-800 disabled:opacity-50"
           >
             {loading ? 'Creating group...' : 'Create group'}
           </button>
