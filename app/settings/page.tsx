@@ -84,9 +84,18 @@ export default function SettingsPage() {
         .eq('id', parsed.groupId)
         .maybeSingle()
 
+      if (groupError?.message?.includes('created_by_user_id')) {
+        // Backward compatibility: if migration not applied yet, keep settings usable.
+        console.warn('[Nearby][Settings] groups.created_by_user_id missing. Falling back to non-creator mode.')
+        setIsGroupCreator(false)
+        return
+      }
+
       if (groupError) {
         console.error('[Nearby][Settings] Failed to load group ownership:', groupError)
-        throw new Error('SETTINGS_GROUP_LOAD_FAILED')
+        // Do not block the whole settings screen when ownership lookup fails.
+        setIsGroupCreator(false)
+        return
       }
 
       const creatorId = (group as { created_by_user_id?: string | null } | null)?.created_by_user_id ?? null
