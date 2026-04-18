@@ -76,8 +76,9 @@ export default function AddPlace() {
   const [note, setNote] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [analyzing, setAnalyzing] = useState(false)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [aiSuggestion, setAiSuggestion] = useState<FoodSuggestResult>(emptySuggestion)
+  const [aiError, setAiError] = useState('')
 
   const [categories, setCategories] = useState<Category[]>([])
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
@@ -218,6 +219,7 @@ export default function AddPlace() {
     setSelectedFile(file)
     setAiSuggestion(emptySuggestion)
     setSelectedSuggestionName(null)
+    setAiError('')
 
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     if (file) {
@@ -227,46 +229,63 @@ export default function AddPlace() {
     }
   }
 
-  const analyzeFoodPhoto = async () => {
-    if (!selectedFile) return
-    setAnalyzing(true)
-    setError('')
-
-    try {
-      const formData = new FormData()
-      formData.append('image', selectedFile)
-
-      const res = await fetch('/api/food/suggest', {
-        method: 'POST',
-        body: formData,
-      })
-      const data = await res.json()
-
-      if (data.error) {
-        setError(`Could not analyze image: ${data.error}`)
-        return
-      }
-
-      const normalized: FoodSuggestResult = {
-        primarySuggestion: typeof data.primarySuggestion === 'string' ? data.primarySuggestion : null,
-        alternativeSuggestions: Array.isArray(data.alternativeSuggestions) ? data.alternativeSuggestions : [],
-        detectedTextHints: Array.isArray(data.detectedTextHints) ? data.detectedTextHints : [],
-        containsMultipleFoods: Boolean(data.containsMultipleFoods),
-        reasoningShort: typeof data.reasoningShort === 'string' ? data.reasoningShort : '',
-      }
-
-      setAiSuggestion(normalized)
-      if (normalized.primarySuggestion) {
-        setSelectedSuggestionName(normalized.primarySuggestion)
-        setSelectedCategoryId(null)
-        setNewCategoryName('')
-      }
-    } catch {
-      setError('Failed to analyze your photo. You can still pick a category manually.')
-    } finally {
-      setAnalyzing(false)
+  useEffect(() => {
+    if (!selectedFile) {
+      setIsAnalyzing(false)
+      return
     }
-  }
+
+    let cancelled = false
+    const run = async () => {
+      setIsAnalyzing(true)
+      setAiError('')
+
+      try {
+        const formData = new FormData()
+        formData.append('image', selectedFile)
+
+        const res = await fetch('/api/food/suggest', {
+          method: 'POST',
+          body: formData,
+        })
+        const data = await res.json()
+
+        if (cancelled) return
+
+        if (data.error) {
+          setAiSuggestion(emptySuggestion)
+          setAiError('Could not analyze this photo. You can still choose category manually.')
+          return
+        }
+
+        const normalized: FoodSuggestResult = {
+          primarySuggestion: typeof data.primarySuggestion === 'string' ? data.primarySuggestion : null,
+          alternativeSuggestions: Array.isArray(data.alternativeSuggestions) ? data.alternativeSuggestions : [],
+          detectedTextHints: Array.isArray(data.detectedTextHints) ? data.detectedTextHints : [],
+          containsMultipleFoods: Boolean(data.containsMultipleFoods),
+          reasoningShort: typeof data.reasoningShort === 'string' ? data.reasoningShort : '',
+        }
+
+        setAiSuggestion(normalized)
+        if (normalized.primarySuggestion) {
+          setSelectedSuggestionName(normalized.primarySuggestion)
+          setSelectedCategoryId(null)
+          setNewCategoryName('')
+        }
+      } catch {
+        if (cancelled) return
+        setAiSuggestion(emptySuggestion)
+        setAiError('Could not analyze this photo. You can still choose category manually.')
+      } finally {
+        if (!cancelled) setIsAnalyzing(false)
+      }
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedFile])
 
   const handleSelectExistingCategory = (id: string) => {
     setSelectedCategoryId((prev) => (prev === id ? null : id))
@@ -460,6 +479,14 @@ export default function AddPlace() {
     ...aiSuggestion.alternativeSuggestions.filter((name) => name !== aiSuggestion.primarySuggestion),
   ]
 
+  const mapEmbedSrc = selectedPlace
+    ? selectedPlace.lat != null && selectedPlace.lng != null
+      ? `https://www.google.com/maps?q=${selectedPlace.lat},${selectedPlace.lng}&z=15&output=embed`
+      : selectedPlace.formatted_address
+      ? `https://www.google.com/maps?q=${encodeURIComponent(selectedPlace.formatted_address)}&output=embed`
+      : null
+    : null
+
   return (
     <main className="min-h-screen bg-neutral-50 p-5 pb-24">
       <div className="max-w-md mx-auto">
@@ -529,8 +556,15 @@ export default function AddPlace() {
                     <p className="text-xs font-medium text-neutral-700">Verify this place</p>
                     <p className="text-[11px] text-neutral-500 mt-0.5">Make sure this map preview matches your selected location.</p>
                   </div>
-                  {selectedPlace.map_preview_url ? (
-                    <img src={selectedPlace.map_preview_url} alt="Map preview" className="w-full h-36 object-cover" />
+                  {mapEmbedSrc ? (
+                    <iframe
+                      title="Place map preview"
+                      width="100%"
+                      height="180"
+                      style={{ border: 0, borderRadius: '12px' }}
+                      loading="lazy"
+                      src={mapEmbedSrc}
+                    />
                   ) : (
                     <div className="h-28 grid place-items-center text-xs text-neutral-400">Map preview unavailable for this place</div>
                   )}
@@ -554,13 +588,10 @@ export default function AddPlace() {
             {previewUrl && (
               <div className="mt-3 space-y-3 transition-all duration-300 ease-out">
                 <img src={previewUrl} alt="Food preview" className="h-48 w-full rounded-xl border border-neutral-200 object-cover" />
-                <button
-                  onClick={analyzeFoodPhoto}
-                  disabled={analyzing}
-                  className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm font-medium text-neutral-700 transition hover:bg-neutral-100 disabled:opacity-50"
-                >
-                  {analyzing ? 'Analyzing your photo...' : 'Analyze food photo'}
-                </button>
+                <p className={`text-xs text-neutral-500 transition-opacity duration-300 ${isAnalyzing ? 'opacity-100' : 'opacity-0'}`}>
+                  Analyzing your photo...
+                </p>
+                {aiError && <p className="text-xs text-amber-700">{aiError}</p>}
               </div>
             )}
           </section>
@@ -654,7 +685,7 @@ export default function AddPlace() {
 
           <button
             onClick={handleSave}
-            disabled={saving || loadingDetails || analyzing}
+            disabled={saving || loadingDetails}
             className="w-full rounded-xl bg-neutral-900 px-4 py-3 text-sm font-medium text-white transition-all duration-300 hover:opacity-95 disabled:opacity-50"
           >
             {saving ? 'Saving...' : 'Save place'}
