@@ -107,18 +107,40 @@ export default function NearbyHome() {
     const timer = setTimeout(() => { console.warn('[Places] fetch timed out'); controller.abort() }, 12000)
 
     try {
-      const { data, error } = await supabase
+      const preferredQuery = await supabase
         .from('recommendations')
         .select(`
           note,
           created_at,
           place_id,
-          places ( name, formatted_address, lat, lng, photo_urls, place_categories ( food_categories ( id, name ) ) ),
+          places ( name, formatted_address, lat, lng, photo_urls, image_transforms, place_categories ( food_categories ( id, name ) ) ),
           members ( display_name )
         `)
         .eq('group_id', groupId)
         .order('created_at', { ascending: false })
         .abortSignal(controller.signal)
+
+      let data: any[] | null = preferredQuery.data as any[] | null
+      let error: { code?: string; message?: string } | null = preferredQuery.error as { code?: string; message?: string } | null
+
+      // Backward compatibility for databases where image_transforms column was not migrated yet.
+      if (error && error.code === '42703') {
+        const fallbackQuery = await supabase
+          .from('recommendations')
+          .select(`
+            note,
+            created_at,
+            place_id,
+            places ( name, formatted_address, lat, lng, photo_urls, place_categories ( food_categories ( id, name ) ) ),
+            members ( display_name )
+          `)
+          .eq('group_id', groupId)
+          .order('created_at', { ascending: false })
+          .abortSignal(controller.signal)
+
+        data = fallbackQuery.data as any[] | null
+        error = fallbackQuery.error as { code?: string; message?: string } | null
+      }
 
       if (error) {
         console.error('[Nearby][API] Places fetch failed:', error)
@@ -141,7 +163,7 @@ export default function NearbyHome() {
             lat: r.places?.lat ?? null,
             lng: r.places?.lng ?? null,
             photo_urls: r.places?.photo_urls ?? [],
-            image_transforms: {},
+            image_transforms: (r.places?.image_transforms as TransformMap | null) ?? {},
             recommendations: [],
             categories: cats,
             newest_at: r.created_at,
@@ -173,10 +195,15 @@ export default function NearbyHome() {
     if (!raw) { router.replace(withBasePath('/')); return }
     const s: Session = JSON.parse(raw)
     setSession(s)
-    const initial: GroupEntry = { memberId: s.memberId, memberName: s.memberName, groupId: s.groupId, groupName: s.groupName }
+    const allGroups = s.allGroups ?? []
+    const lastUsedGroupId = localStorage.getItem('nearby_last_group_id')
+    const remembered = lastUsedGroupId
+      ? allGroups.find((g) => g.groupId === lastUsedGroupId)
+      : null
+    const initial: GroupEntry = remembered ?? { memberId: s.memberId, memberName: s.memberName, groupId: s.groupId, groupName: s.groupName }
     setActiveGroup(initial)
-    fetchPlaces(s.groupId)
-    fetchCategories(s.groupId)
+    fetchPlaces(initial.groupId)
+    fetchCategories(initial.groupId)
   }, [router, fetchPlaces, fetchCategories])
 
   // ── Group switching ───────────────────────────────────────────────────────────
@@ -196,6 +223,8 @@ export default function NearbyHome() {
       setSession(nextSession)
       localStorage.setItem('nearby_session', JSON.stringify(nextSession))
     }
+
+    localStorage.setItem('nearby_last_group_id', entry.groupId)
 
     setActiveGroup(entry)
     setShowGroupMenu(false)
@@ -225,6 +254,8 @@ export default function NearbyHome() {
       setSession(nextSession)
       localStorage.setItem('nearby_session', JSON.stringify(nextSession))
     }
+
+    localStorage.setItem('nearby_last_group_id', entry.groupId)
 
     setShowCreateGroupModal(false)
     setShowGroupMenu(false)
@@ -352,6 +383,25 @@ export default function NearbyHome() {
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${destination}`, '_blank')
   }
 
+  const generateWhatsAppMessage = (place: PlaceCard): string => {
+    const topNote = place.recommendations.find((r) => (r.note ?? '').trim().length > 0)?.note?.trim() ?? ''
+    const directionsUrl =
+      place.lat != null && place.lng != null
+        ? `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`
+        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.formatted_address ?? place.name)}`
+
+    return `🍜 Found something good nearby!\n\n📍 ${place.name}\n${topNote ? `📝 ${topNote}\n` : ''}📌 Address:\n${place.formatted_address ?? place.name}\n\n🧭 Directions:\n${directionsUrl}\n\nExplore more around you:\nhttps://togostory.com/nearby`
+  }
+
+  const shareToWhatsApp = (place: PlaceCard) => {
+    const encoded = encodeURIComponent(generateWhatsAppMessage(place))
+    const isMobile = /iPhone|Android/i.test(navigator.userAgent)
+    const url = isMobile
+      ? `https://wa.me/?text=${encoded}`
+      : `https://web.whatsapp.com/send?text=${encoded}`
+    window.open(url, '_blank')
+  }
+
   if (!session || !activeGroup) return null
 
   const displayed = displayedPlaces()
@@ -359,7 +409,7 @@ export default function NearbyHome() {
   const allGroups = session.allGroups ?? []
 
   return (
-    <main className="min-h-screen bg-[#f8f8f6] pb-24">
+    <main className="min-h-screen bg-[#f5f6f8] pb-24">
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <AppHeader
@@ -396,11 +446,11 @@ export default function NearbyHome() {
         }
       />
 
-      <div className="px-5 pt-5 pb-3 max-w-md mx-auto">
+      <div className="nearby-shell pt-5 pb-3">
         <div className="relative">
           <button
             onClick={() => setShowGroupMenu((prev) => !prev)}
-            className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-100 shadow-sm"
+            className="inline-flex items-center gap-2 rounded-full border border-[#d5dceb] bg-white px-3 py-1.5 text-xs font-medium text-[#2b3a58] transition-colors hover:bg-[#f3f6fb] shadow-sm"
           >
             <span>{activeGroup.groupName}</span>
             <span className="text-neutral-400">▾</span>
@@ -415,7 +465,7 @@ export default function NearbyHome() {
                     onClick={() => switchGroup(g)}
                     className={`w-full px-3 py-2 text-left text-sm transition-colors ${
                       activeGroup.groupId === g.groupId
-                        ? 'bg-teal-50 text-teal-700 font-medium'
+                        ? 'bg-[#ebf0f9] text-[#1f355d] font-medium'
                         : 'text-neutral-600 hover:bg-neutral-50'
                     }`}
                   >
@@ -430,7 +480,7 @@ export default function NearbyHome() {
                     setShowGroupMenu(false)
                     setShowCreateGroupModal(true)
                   }}
-                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-teal-700 hover:bg-teal-50 transition-colors font-medium"
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-[#1f355d] hover:bg-[#edf2fb] transition-colors font-medium"
                 >
                   + Create new group
                 </button>
@@ -462,13 +512,13 @@ export default function NearbyHome() {
           {locationStatus === 'idle' && (
             <div className="flex items-center gap-3">
               <p className="text-xs text-neutral-400">{subtitle.text}</p>
-              <button onClick={resolveLocation} className="shrink-0 text-xs text-teal-700 border border-teal-200 rounded-full px-3 py-1 hover:bg-teal-50 transition-colors">Enable</button>
+              <button onClick={resolveLocation} className="shrink-0 text-xs text-[#1f355d] border border-[#cfd8ea] rounded-full px-3 py-1 hover:bg-[#edf2fb] transition-colors">Enable</button>
             </div>
           )}
           {locationStatus === 'denied' && (
             <div className="flex items-center gap-3">
               <p className="text-xs text-neutral-400">{subtitle.text}</p>
-              <button onClick={resolveLocation} className="shrink-0 text-xs text-teal-700 border border-teal-200 rounded-full px-3 py-1 hover:bg-teal-50 transition-colors">Try again</button>
+              <button onClick={resolveLocation} className="shrink-0 text-xs text-[#1f355d] border border-[#cfd8ea] rounded-full px-3 py-1 hover:bg-[#edf2fb] transition-colors">Try again</button>
             </div>
           )}
         </div>
@@ -476,12 +526,12 @@ export default function NearbyHome() {
 
       {/* ── Category filter ──────────────────────────────────────────────────── */}
       {groupCategories.length > 0 && (
-        <div className="px-5 max-w-md mx-auto mb-3">
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+        <div className="nearby-shell mb-3">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setSelectedCategoryId(null)}
               className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                !selectedCategoryId ? 'bg-teal-700 text-white' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                !selectedCategoryId ? 'bg-[#1f355d] text-white' : 'bg-[#edf1f7] text-[#4b5671] hover:bg-[#e4e9f2]'
               }`}
             >
               All
@@ -491,7 +541,7 @@ export default function NearbyHome() {
                 key={cat.id}
                 onClick={() => setSelectedCategoryId((prev) => prev === cat.id ? null : cat.id)}
                 className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                  selectedCategoryId === cat.id ? 'bg-teal-700 text-white' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                  selectedCategoryId === cat.id ? 'bg-[#1f355d] text-white' : 'bg-[#edf1f7] text-[#4b5671] hover:bg-[#e4e9f2]'
                 }`}
               >
                 {cat.name}
@@ -502,7 +552,7 @@ export default function NearbyHome() {
       )}
 
       {/* ── Place list ───────────────────────────────────────────────────────── */}
-      <div className="px-5 max-w-md mx-auto space-y-4">
+      <div className="nearby-shell space-y-4">
         {placesLoading ? (
           <p className="text-sm text-neutral-400 text-center py-20">Loading…</p>
         ) : placesError ? (
@@ -521,7 +571,7 @@ export default function NearbyHome() {
             </p>
             <button
               onClick={() => router.push(withBasePath('/add-place'))}
-              className="mt-6 w-full rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-3 text-sm font-semibold text-white transition-colors"
+              className="mt-6 w-full rounded-xl bg-[#1f355d] hover:bg-[#162746] px-4 py-3 text-sm font-semibold text-white transition-colors"
             >
               Add first place
             </button>
@@ -605,9 +655,15 @@ export default function NearbyHome() {
                   <div className="flex items-center gap-2 pt-1 flex-wrap">
                     <button
                       onClick={() => openDirections(place)}
-                      className="text-xs text-blue-700 border border-blue-200 rounded-full px-3 py-1 bg-blue-50 hover:bg-blue-100 transition-colors"
+                      className="text-xs text-[#1f355d] border border-[#ccd6ea] rounded-full px-3 py-1 bg-[#eef3fb] hover:bg-[#e3eaf7] transition-colors"
                     >
                       Directions
+                    </button>
+                    <button
+                      onClick={() => shareToWhatsApp(place)}
+                      className="text-xs text-[#7f4a24] border border-[#efcfb6] rounded-full px-3 py-1 bg-[#fff4eb] hover:bg-[#ffead9] transition-colors"
+                    >
+                      Share
                     </button>
                   </div>
                 </div>
@@ -620,7 +676,7 @@ export default function NearbyHome() {
       {/* ── Floating add button ──────────────────────────────────────────────── */}
       <button
         onClick={() => router.push(withBasePath('/add-place'))}
-        className="fixed bottom-6 right-5 rounded-full bg-teal-700 hover:bg-teal-800 active:bg-teal-900 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-colors"
+        className="fixed bottom-6 right-5 rounded-full bg-[#1f355d] hover:bg-[#162746] active:bg-[#12203a] px-5 py-3 text-sm font-semibold text-white shadow-lg transition-colors"
       >
         + Add
       </button>

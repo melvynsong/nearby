@@ -112,7 +112,7 @@ export default function PhotoFrameEditor({ src, initialTransform, onCancel, onDo
               return canClamp ? clampTransform(candidate, frameSize, imageSize) : candidate
             })
           }}
-          className="w-full accent-teal-700"
+          className="w-full accent-[#1f355d]"
         />
       </div>
 
@@ -136,7 +136,7 @@ export default function PhotoFrameEditor({ src, initialTransform, onCancel, onDo
           <button
             type="button"
             onClick={() => onDone(safeTransform)}
-            className="rounded-full bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
+            className="rounded-full bg-[#1f355d] px-4 py-2 text-sm font-medium text-white hover:bg-[#162746]"
           >
             Done
           </button>

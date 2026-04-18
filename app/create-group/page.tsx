@@ -187,7 +187,8 @@ export default function CreateGroup() {
       })
 
       const result = await response.json()
-      if (!response.ok || !result?.ok) {
+      const isSuccess = Boolean(response.ok && (result?.ok || (result?.groupId && result?.memberId)))
+      if (!isSuccess) {
         setError(result?.message ?? 'We could not save your changes. Please try again.')
         setSaving(false)
         return
@@ -226,7 +227,7 @@ export default function CreateGroup() {
     return (
       <main className="min-h-screen bg-[#f8f8f6]">
         <AppHeader />
-        <div className="mx-auto max-w-sm px-5 pt-10">
+        <div className="nearby-shell pt-10">
           <ErrorState
             title="Please sign in first"
             message="Please create an account or sign in before creating a group."
@@ -244,23 +245,7 @@ export default function CreateGroup() {
     return (
       <main className="min-h-screen bg-[#f8f8f6]">
         <AppHeader />
-        <div className="mx-auto max-w-sm px-5 pt-10">
-          <ErrorState
-            title="Set your personal passcode first"
-            message="You need to set a personal passcode before you can create a group. This lets you log in to Nearby."
-            primaryLabel="Set my passcode"
-            onPrimary={() => router.push(withBasePath('/settings?setup=passcode'))}
-          />
-        </div>
-      </main>
-    )
-  }
-
-  if (passcodeGated) {
-    return (
-      <main className="min-h-screen bg-[#f8f8f6]">
-        <AppHeader />
-        <div className="mx-auto max-w-sm px-5 pt-10">
+        <div className="nearby-shell pt-10">
           <ErrorState
             title="Set your personal passcode first"
             message="You need to set a personal passcode before you can create a group. This lets you log in to Nearby."
@@ -274,11 +259,11 @@ export default function CreateGroup() {
 
   if (done) {
     return (
-      <main className="min-h-screen bg-[#f8f8f6]">
+      <main className="min-h-screen bg-[#f5f6f8]">
         <AppHeader />
         <div className="flex items-center justify-center px-5 py-12">
-        <div className="w-full max-w-sm rounded-2xl bg-white border border-neutral-200 p-7 shadow-sm text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-teal-50">
+        <div className="nearby-shell rounded-2xl bg-white border border-[#dfe5f0] p-7 shadow-sm text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#eef3fb]">
             <span className="text-2xl">✓</span>
           </div>
           <p className="text-xl font-bold text-neutral-900">Group created!</p>
@@ -291,12 +276,20 @@ export default function CreateGroup() {
               groupPasscode={createdGroupPasscode || passcode}
             />
           </div>
-          <button
-            onClick={() => router.push(withBasePath('/nearby'))}
-            className="mt-6 w-full rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-3 text-sm font-semibold text-white transition-colors"
-          >
-            Go to Nearby
-          </button>
+          <div className="mt-6 grid grid-cols-1 gap-2">
+            <button
+              onClick={() => router.push(withBasePath('/add-place'))}
+              className="w-full rounded-xl bg-[#1f355d] hover:bg-[#162746] px-4 py-3 text-sm font-semibold text-white transition-colors"
+            >
+              Add Place
+            </button>
+            <button
+              onClick={() => router.push(withBasePath('/nearby'))}
+              className="w-full rounded-xl border border-[#d6ddeb] bg-white px-4 py-3 text-sm font-semibold text-[#1f355d] transition-colors hover:bg-[#eef3fb]"
+            >
+              Go to Nearby
+            </button>
+          </div>
         </div>
         </div>
       </main>
@@ -304,9 +297,9 @@ export default function CreateGroup() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f8f8f6] px-5 py-8 pb-20">
+    <main className="min-h-screen bg-[#f5f6f8] px-5 py-8 pb-20">
       <AppHeader />
-      <div className="max-w-sm mx-auto">
+      <div className="nearby-shell">
         <button
           onClick={() => router.back()}
           className="mb-5 text-sm text-neutral-500 hover:text-neutral-800 transition-colors"
@@ -331,7 +324,7 @@ export default function CreateGroup() {
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
                 placeholder="e.g. Friday Makan Crew"
-                className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
+                className="w-full rounded-xl border border-[#d6ddeb] px-4 py-2.5 text-sm outline-none focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9] transition"
               />
             </div>
 
@@ -344,7 +337,7 @@ export default function CreateGroup() {
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
                 placeholder="Share this with friends to join"
-                className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
+                className="w-full rounded-xl border border-[#d6ddeb] px-4 py-2.5 text-sm outline-none focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9] transition"
               />
               <p className="mt-1.5 text-xs text-neutral-400">
                 Friends use this passcode + their last 4 digits to log in.
@@ -364,14 +357,14 @@ export default function CreateGroup() {
                       value={friend.name}
                       onChange={(e) => updateFriend(friend.id, 'name', e.target.value)}
                       placeholder={`Friend ${idx + 1} name`}
-                      className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
+                      className="w-full rounded-xl border border-[#d6ddeb] px-3 py-2 text-sm outline-none focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9] transition"
                     />
                     <input
                       type="tel"
                       value={friend.phone}
                       onChange={(e) => updateFriend(friend.id, 'phone', e.target.value)}
                       placeholder="Phone number"
-                      className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
+                      className="w-full rounded-xl border border-[#d6ddeb] px-3 py-2 text-sm outline-none focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9] transition"
                     />
                   </div>
                   {friends.length > 1 && (
@@ -388,7 +381,7 @@ export default function CreateGroup() {
 
             <button
               onClick={addFriend}
-              className="mt-4 text-sm font-medium text-teal-700 hover:underline"
+              className="mt-4 text-sm font-medium text-[#1f355d] hover:underline"
             >
               + Add another friend
             </button>
@@ -399,7 +392,7 @@ export default function CreateGroup() {
           <button
             onClick={handleCreate}
             disabled={saving}
-            className="w-full rounded-xl bg-teal-700 hover:bg-teal-800 active:bg-teal-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 transition-colors"
+            className="w-full rounded-xl bg-[#1f355d] hover:bg-[#162746] active:bg-[#12203a] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 transition-colors"
           >
             {saving ? 'Creating group…' : 'Create group'}
           </button>

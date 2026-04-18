@@ -1,19 +1,11 @@
 export function buildGroupInviteMessage(groupName: string, groupPasscode: string): string {
   return [
-    `Group Invite - ${groupName}`,
+    '🎉 You\'re invited!',
     '',
-    'You are invited to join my group on Nearby.',
+    `👥 Group: ${groupName}`,
+    `🔐 Passcode: ${groupPasscode}`,
     '',
-    'How to join:',
-    '',
-    '1. Open the Nearby app',
-    '2. Go to Join Group',
-    `3. Enter this passcode: ${groupPasscode}`,
-    '',
-    'Before joining:',
-    '',
-    '* Create your account',
-    '',
-    'See you inside.',
+    'Join:',
+    'https://togostory.com/nearby',
   ].join('\n')
 }

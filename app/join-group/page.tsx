@@ -128,7 +128,7 @@ export default function JoinGroupPage() {
     return (
       <main className="min-h-screen bg-[#f8f8f6]">
         <AppHeader />
-        <div className="mx-auto max-w-sm px-5 pt-10">
+        <div className="nearby-shell pt-10">
           <ErrorState
             title="Please sign in first"
             message="Please create an account or sign in before joining a group."
@@ -143,9 +143,9 @@ export default function JoinGroupPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f8f8f6]">
+    <main className="min-h-screen bg-[#f5f6f8]">
       <AppHeader />
-      <div className="mx-auto max-w-sm px-5 pt-8">
+      <div className="nearby-shell pt-8">
         <button
           onClick={() => router.back()}
           className="mb-5 text-sm text-neutral-500 transition-colors hover:text-neutral-800"
@@ -166,7 +166,7 @@ export default function JoinGroupPage() {
               value={passcode}
               onChange={(e) => setPasscode(e.target.value)}
               placeholder="9999"
-              className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+              className="w-full rounded-xl border border-[#d6ddeb] px-4 py-2.5 text-sm outline-none transition focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9]"
             />
             <p className="mt-2 text-xs text-neutral-500">
               Make sure you have created your account before joining.
@@ -178,7 +178,7 @@ export default function JoinGroupPage() {
           <button
             onClick={handleJoin}
             disabled={loading}
-            className="mt-4 w-full rounded-xl bg-teal-700 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-teal-800 disabled:opacity-50"
+            className="mt-4 w-full rounded-xl bg-[#1f355d] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#162746] disabled:opacity-50"
           >
             {loading ? 'Joining...' : 'Join Group'}
           </button>

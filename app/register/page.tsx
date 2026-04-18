@@ -206,18 +206,18 @@ export default function Register() {
 
   if (done) {
     return (
-      <main className="min-h-screen bg-[#f8f8f6]">
+      <main className="min-h-screen bg-[#f5f6f8]">
         <AppHeader />
         <div className="flex items-center justify-center px-5 py-12">
-        <div className="w-full max-w-sm rounded-2xl bg-white border border-neutral-200 p-7 shadow-sm text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-teal-50">
+        <div className="nearby-shell rounded-2xl bg-white border border-[#dfe5f0] p-7 shadow-sm text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#eef3fb]">
             <span className="text-2xl">✓</span>
           </div>
           <p className="text-xl font-bold text-neutral-900">You&apos;re in!</p>
           <p className="mt-2 text-sm text-neutral-500">Account created. Set a personal passcode to continue — you'll use it to log in to Nearby.</p>
           <button
             onClick={() => router.push(withBasePath('/settings?setup=passcode'))}
-            className="mt-6 w-full rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-3 text-sm font-semibold text-white transition-colors"
+            className="mt-6 w-full rounded-xl bg-[#1f355d] hover:bg-[#162746] px-4 py-3 text-sm font-semibold text-white transition-colors"
           >
             Set my passcode
           </button>
@@ -228,10 +228,10 @@ export default function Register() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f8f8f6]">
+    <main className="min-h-screen bg-[#f5f6f8]">
       <AppHeader />
       <div className="flex items-center justify-center px-5 py-12">
-      <div className="w-full max-w-sm rounded-2xl bg-white border border-neutral-200 p-7 shadow-sm">
+      <div className="nearby-shell rounded-2xl bg-white border border-[#dfe5f0] p-7 shadow-sm">
         <h1 className="text-xl font-bold text-neutral-900">Create account</h1>
         <p className="mt-1 text-sm text-neutral-500">
           Join Nearby and start saving food spots with your circle.
@@ -247,7 +247,7 @@ export default function Register() {
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Joe Doe"
-              className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
+              className="w-full rounded-xl border border-[#d6ddeb] px-4 py-2.5 text-sm outline-none focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9] transition"
             />
           </div>
 
@@ -260,7 +260,7 @@ export default function Register() {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="98765432"
-              className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
+              className="w-full rounded-xl border border-[#d6ddeb] px-4 py-2.5 text-sm outline-none focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9] transition"
             />
             <p className="mt-1.5 text-xs text-neutral-400">
               Used so friends can add you by phone number.
@@ -272,14 +272,14 @@ export default function Register() {
           <button
             onClick={handleRegister}
             disabled={saving}
-            className="w-full rounded-xl bg-teal-700 hover:bg-teal-800 active:bg-teal-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 transition-colors"
+            className="w-full rounded-xl bg-[#1f355d] hover:bg-[#162746] active:bg-[#12203a] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 transition-colors"
           >
             {saving ? 'Creating account…' : 'Create account'}
           </button>
 
           <p className="text-center text-xs text-neutral-400">
             Already registered?{' '}
-            <button onClick={() => router.push(withBasePath('/'))} className="font-medium text-teal-700 hover:underline">
+            <button onClick={() => router.push(withBasePath('/'))} className="font-medium text-[#1f355d] hover:underline">
               Log in
             </button>
           </p>

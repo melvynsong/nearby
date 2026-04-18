@@ -14,6 +14,12 @@ type Session = {
   memberName: string
   groupId: string
   groupName: string
+  allGroups?: Array<{
+    memberId: string
+    memberName: string
+    groupId: string
+    groupName: string
+  }>
 }
 
 type RegisterData = {
@@ -51,6 +57,7 @@ function SettingsPage() {
   const [groupPasscodeSaving, setGroupPasscodeSaving] = useState(false)
   const [groupPasscodeError, setGroupPasscodeError] = useState('')
   const [groupPasscodeSaved, setGroupPasscodeSaved] = useState(false)
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null)
 
   const [isGroupCreator, setIsGroupCreator] = useState(false)
   const [inviteGroupName, setInviteGroupName] = useState('')
@@ -104,6 +111,7 @@ function SettingsPage() {
       if (rawSession) {
         const parsed = JSON.parse(rawSession) as Session
         setSession(parsed)
+        setExpandedGroupId(parsed.groupId)
 
         const { data: member, error: memberError } = await supabase
           .from('members')
@@ -162,7 +170,7 @@ function SettingsPage() {
 
       setProfile({
         userId,
-        fullName: profileSource?.full_name ?? 'Member',
+        fullName: profileSource?.full_name ?? '',
         phoneNumber: profileSource?.phone_number ?? '',
       })
 
@@ -209,69 +217,13 @@ function SettingsPage() {
     void loadSettings()
   }, [])
 
-  const savePersonalPasscode = async () => {
-    if (!profile) return
-
-    setPersonalPasscodeSaved(false)
-    setPersonalPasscodeError('')
-
-    const code = personalPasscode.trim()
-    if (!code) {
-      setPersonalPasscodeError('Please enter a passcode.')
-      return
-    }
-    if (code.length < 4) {
-      setPersonalPasscodeError('Passcode must be at least 4 characters.')
-      return
-    }
-
-    setPersonalPasscodeSaving(true)
-    try {
-      // Get current Supabase session token for server-side identity verification.
-      const { data: sessionData } = await supabase.auth.getSession()
-      const accessToken = sessionData?.session?.access_token ?? null
-
-      if (!accessToken) {
-        setPersonalPasscodeError('Your session has expired. Please sign in again.')
-        return
-      }
-
-      const response = await fetch(apiPath('/api/settings/personal-passcode'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ passcode: code }),
-      })
-
-      const result = await response.json()
-      if (!response.ok || !result?.ok) {
-        setPersonalPasscodeError(result?.message ?? 'We could not save your passcode. Please try again.')
-        return
-      }
-
-      markPasscodeSet()
-      setPersonalPasscode('')
-      setPersonalPasscodeSaved(true)
-
-      if (isPasscodeSetup) {
-        const hasSession = !!localStorage.getItem('nearby_session')
-        router.push(withBasePath(hasSession ? '/nearby' : '/'))
-      }
-    } catch (error) {
-      console.error('[Nearby][Save][PersonalPasscode] Request failed:', error)
-      setPersonalPasscodeError('We could not save your passcode. Please try again.')
-    } finally {
-      setPersonalPasscodeSaving(false)
-    }
-  }
-
   const saveProfile = async () => {
     if (!profile) return
 
     setProfileSaved(false)
     setProfileError('')
+    setPersonalPasscodeSaved(false)
+    setPersonalPasscodeError('')
 
     const name = profile.fullName.trim()
     const phone = profile.phoneNumber.trim()
@@ -285,7 +237,14 @@ function SettingsPage() {
       return
     }
 
+    const code = personalPasscode.trim()
+    if (code && code.length < 4) {
+      setPersonalPasscodeError('Passcode must be at least 4 characters.')
+      return
+    }
+
     setProfileSaving(true)
+    setPersonalPasscodeSaving(true)
     try {
       const response = await fetch(apiPath('/api/settings/profile'), {
         method: 'POST',
@@ -303,18 +262,59 @@ function SettingsPage() {
         return
       }
 
+      if (code) {
+        const { data: sessionData } = await supabase.auth.getSession()
+        const accessToken = sessionData?.session?.access_token ?? null
+
+        if (!accessToken) {
+          setPersonalPasscodeError('Your session has expired. Please sign in again.')
+          return
+        }
+
+        const passcodeResponse = await fetch(apiPath('/api/settings/personal-passcode'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ passcode: code }),
+        })
+
+        const passcodeResult = await passcodeResponse.json()
+        if (!passcodeResponse.ok || !passcodeResult?.ok) {
+          setPersonalPasscodeError(passcodeResult?.message ?? 'We could not save your passcode. Please try again.')
+          return
+        }
+
+        markPasscodeSet()
+        setPersonalPasscode('')
+        setPersonalPasscodeSaved(true)
+      }
+
       const raw = localStorage.getItem('nearby_session')
       if (raw) {
         const parsed = JSON.parse(raw) as Session
         localStorage.setItem('nearby_session', JSON.stringify({ ...parsed, memberName: name }))
       }
 
+      const rawRegister = localStorage.getItem('nearby_register')
+      if (rawRegister) {
+        const parsedRegister = JSON.parse(rawRegister) as RegisterData
+        localStorage.setItem('nearby_register', JSON.stringify({ ...parsedRegister, userName: name, phone }))
+      }
+
       setProfileSaved(true)
+
+      if (isPasscodeSetup && code) {
+        const hasSession = !!localStorage.getItem('nearby_session')
+        router.push(withBasePath(hasSession ? '/nearby' : '/'))
+      }
     } catch (error) {
       console.error('[Nearby][Save][Profile] Request failed:', error)
       setProfileError('We could not save your changes. Please try again.')
     } finally {
       setProfileSaving(false)
+      setPersonalPasscodeSaving(false)
     }
   }
 
@@ -374,19 +374,21 @@ function SettingsPage() {
     }
   }
 
+  const allGroups = session?.allGroups ?? (session ? [{ memberId: session.memberId, memberName: session.memberName, groupId: session.groupId, groupName: session.groupName }] : [])
+
   return (
-    <main className="min-h-screen bg-[#f8f8f6] pb-20">
+    <main className="min-h-screen bg-[#f5f6f8] pb-20">
       <AppHeader
         right={
           <button
             onClick={() => void handleLogout()}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 text-xs font-medium text-neutral-700 shadow-sm transition-all hover:bg-neutral-100 active:scale-[0.98]"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#ead6d2] bg-[#fff8f7] px-3 text-xs font-medium text-[#8a4a43] shadow-sm transition-all hover:bg-[#fdeeee] active:scale-[0.98]"
           >
             Log out
           </button>
         }
       />
-      <div className="mx-auto w-full max-w-md px-5 pt-5">
+      <div className="nearby-shell pt-5">
         <button
           onClick={() => router.push(withBasePath('/nearby'))}
           className="mb-5 text-sm text-neutral-500 transition-colors hover:text-neutral-800"
@@ -398,7 +400,7 @@ function SettingsPage() {
         <p className="mt-1 text-sm text-neutral-500">Update your profile and group passcode settings.</p>
 
         {isPasscodeSetup && (
-          <div className="mt-4 rounded-xl border border-teal-300 bg-teal-50 px-4 py-3 text-sm text-teal-800">
+          <div className="mt-4 rounded-xl border border-[#d5dceb] bg-[#eef3fb] px-4 py-3 text-sm text-[#1f355d]">
             <span className="font-semibold">One more step:</span> set your personal passcode below to start using Nearby.
           </div>
         )}
@@ -416,7 +418,7 @@ function SettingsPage() {
           </div>
         ) : profile ? (
           <div className="mt-6 space-y-4">
-            <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+            <section className="rounded-2xl border border-[#dfe5f0] bg-white p-5 shadow-sm">
               <h2 className="text-sm font-semibold text-neutral-900">Profile</h2>
 
               <div className="mt-4 space-y-3">
@@ -426,7 +428,7 @@ function SettingsPage() {
                     type="text"
                     value={profile.fullName}
                     onChange={(e) => setProfile((prev) => prev ? { ...prev, fullName: e.target.value } : prev)}
-                    className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                    className="w-full rounded-xl border border-[#d6ddeb] px-4 py-2.5 text-sm outline-none transition focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9]"
                   />
                 </div>
 
@@ -436,115 +438,126 @@ function SettingsPage() {
                     type="tel"
                     value={profile.phoneNumber}
                     onChange={(e) => setProfile((prev) => prev ? { ...prev, phoneNumber: e.target.value } : prev)}
-                    className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                    className="w-full rounded-xl border border-[#d6ddeb] px-4 py-2.5 text-sm outline-none transition focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9]"
                   />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-neutral-700">Personal passcode</label>
+                  <input
+                    type="password"
+                    value={personalPasscode}
+                    onChange={(e) => setPersonalPasscode(e.target.value)}
+                    placeholder="Leave blank to keep current passcode"
+                    className="w-full rounded-xl border border-[#d6ddeb] px-4 py-2.5 text-sm outline-none transition focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9]"
+                  />
+                  <p className="mt-1 text-xs text-neutral-500">This is your private login passcode.</p>
                 </div>
 
               </div>
 
               {profileError && <p className="mt-3 text-sm text-amber-700">{profileError}</p>}
-              {profileSaved && <p className="mt-3 text-sm text-teal-700">Profile updated.</p>}
+              {personalPasscodeError && <p className="mt-3 text-sm text-amber-700">{personalPasscodeError}</p>}
+              {profileSaved && <p className="mt-3 text-sm text-[#1f355d]">Profile updated.</p>}
+              {personalPasscodeSaved && <p className="mt-2 text-sm text-[#1f355d]">Personal passcode saved.</p>}
 
               <button
                 onClick={saveProfile}
-                disabled={profileSaving}
-                className="mt-4 w-full rounded-xl bg-teal-700 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-teal-800 disabled:opacity-50"
+                disabled={profileSaving || personalPasscodeSaving}
+                className="mt-4 w-full rounded-xl bg-[#1f355d] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#162746] disabled:opacity-50"
               >
-                {profileSaving ? 'Saving...' : 'Save profile'}
+                {(profileSaving || personalPasscodeSaving) ? 'Saving...' : 'Save changes'}
               </button>
             </section>
 
-            <section className={`rounded-2xl border bg-white p-5 shadow-sm ${isPasscodeSetup ? 'border-teal-400 ring-2 ring-teal-100' : 'border-neutral-200'}`}>
-              <h2 className="text-sm font-semibold text-neutral-900">Your personal passcode</h2>
-              <p className="mt-1 text-xs text-neutral-500">
-                {isPasscodeSetup
-                  ? 'Set a personal passcode to unlock Nearby. You will use this to log in.'
-                  : 'Used to log in to Nearby. Choose something only you know.'}
-              </p>
+            <section className="rounded-2xl border border-[#dfe5f0] bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-semibold text-neutral-900">Groups</h2>
+              <p className="mt-1 text-xs text-neutral-500">Tap a group to expand details and passcode controls.</p>
 
-              <div className="mt-4">
-                <label className="mb-1.5 block text-sm font-medium text-neutral-700">
-                  {isPasscodeSetup ? 'Create your personal passcode' : 'New personal passcode'}
-                </label>
-                <input
-                  type="password"
-                  value={personalPasscode}
-                  onChange={(e) => setPersonalPasscode(e.target.value)}
-                  placeholder="At least 4 characters"
-                  className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
-                />
-                <p className="mt-1.5 text-xs text-neutral-400">
-                  This is separate from your group passcode. Keep it private.
-                </p>
+              <div className="mt-3 space-y-2">
+                {allGroups.map((group) => {
+                  const isExpanded = expandedGroupId === group.groupId
+                  const isCurrentGroup = session?.groupId === group.groupId
+
+                  return (
+                    <div key={group.groupId} className="rounded-xl border border-[#dfe5f0] bg-[#fafbfd]">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedGroupId((prev) => (prev === group.groupId ? null : group.groupId))}
+                        className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-[#1f355d]">{group.groupName}</p>
+                          <p className="text-xs text-neutral-500">{isCurrentGroup ? 'Current group' : 'Switch in Nearby to manage this group'}</p>
+                        </div>
+                        <span className="text-sm text-neutral-400">{isExpanded ? '−' : '+'}</span>
+                      </button>
+
+                      {isExpanded && (
+                        <div className="border-t border-[#e6ebf4] px-4 py-3">
+                          {isCurrentGroup ? (
+                            isGroupCreator ? (
+                              <>
+                                <label className="mb-1.5 block text-sm font-medium text-neutral-700">New group passcode</label>
+                                <input
+                                  type="text"
+                                  value={groupPasscode}
+                                  onChange={(e) => setGroupPasscode(e.target.value)}
+                                  placeholder="Enter new group passcode"
+                                  className="w-full rounded-xl border border-[#d6ddeb] px-4 py-2.5 text-sm outline-none transition focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9]"
+                                />
+
+                                {groupPasscodeError && <p className="mt-3 text-sm text-amber-700">{groupPasscodeError}</p>}
+                                {groupPasscodeSaved && <p className="mt-3 text-sm text-[#1f355d]">Group passcode updated.</p>}
+
+                                <button
+                                  onClick={saveGroupPasscode}
+                                  disabled={groupPasscodeSaving}
+                                  className="mt-4 w-full rounded-xl bg-[#1f355d] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#162746] disabled:opacity-50"
+                                >
+                                  {groupPasscodeSaving ? 'Saving...' : 'Save group passcode'}
+                                </button>
+
+                                <div className="mt-4">
+                                  {inviteLoading ? (
+                                    <p className="text-sm text-neutral-500">Loading invite details...</p>
+                                  ) : inviteError ? (
+                                    <ErrorState
+                                      title="Something did not go through"
+                                      message={inviteError}
+                                      onPrimary={() => {
+                                        if (session && profile) void loadInviteDetails(session.groupId, profile.userId)
+                                      }}
+                                    />
+                                  ) : (
+                                    <GroupInviteActions
+                                      groupName={inviteGroupName || session?.groupName || 'Your Group'}
+                                      groupPasscode={inviteGroupPasscode}
+                                    />
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <p className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
+                                Only the group creator can change the group passcode.
+                              </p>
+                            )
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => router.push(withBasePath('/nearby'))}
+                              className="w-full rounded-xl border border-[#d6ddeb] bg-white px-4 py-2.5 text-sm font-medium text-[#1f355d] hover:bg-[#eef3fb]"
+                            >
+                              Go to Nearby and switch to this group
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
-
-              {personalPasscodeError && <p className="mt-3 text-sm text-amber-700">{personalPasscodeError}</p>}
-              {personalPasscodeSaved && !isPasscodeSetup && <p className="mt-3 text-sm text-teal-700">Personal passcode saved.</p>}
-
-              <button
-                onClick={savePersonalPasscode}
-                disabled={personalPasscodeSaving}
-                className="mt-4 w-full rounded-xl bg-teal-700 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-teal-800 disabled:opacity-50"
-              >
-                {personalPasscodeSaving ? 'Saving...' : isPasscodeSetup ? 'Set passcode and continue' : 'Save personal passcode'}
-              </button>
             </section>
-
-            <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-              <h2 className="text-sm font-semibold text-neutral-900">Group passcode</h2>
-              <p className="mt-1 text-xs text-neutral-500">Current group: {session?.groupName}</p>
-
-              {isGroupCreator ? (
-                <>
-                  <div className="mt-4">
-                    <label className="mb-1.5 block text-sm font-medium text-neutral-700">New group passcode</label>
-                    <input
-                      type="text"
-                      value={groupPasscode}
-                      onChange={(e) => setGroupPasscode(e.target.value)}
-                      placeholder="Enter new group passcode"
-                      className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
-                    />
-                  </div>
-
-                  {groupPasscodeError && <p className="mt-3 text-sm text-amber-700">{groupPasscodeError}</p>}
-                  {groupPasscodeSaved && <p className="mt-3 text-sm text-teal-700">Group passcode updated.</p>}
-
-                  <button
-                    onClick={saveGroupPasscode}
-                    disabled={groupPasscodeSaving}
-                    className="mt-4 w-full rounded-xl bg-teal-700 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-teal-800 disabled:opacity-50"
-                  >
-                    {groupPasscodeSaving ? 'Saving...' : 'Save group passcode'}
-                  </button>
-                </>
-              ) : (
-                <p className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
-                  Only the group creator can change the group passcode.
-                </p>
-              )}
-            </section>
-
-            {isGroupCreator && (
-              <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-                {inviteLoading ? (
-                  <p className="text-sm text-neutral-500">Loading invite details...</p>
-                ) : inviteError ? (
-                  <ErrorState
-                    title="Something did not go through"
-                    message={inviteError}
-                    onPrimary={() => {
-                      if (session && profile) void loadInviteDetails(session.groupId, profile.userId)
-                    }}
-                  />
-                ) : (
-                  <GroupInviteActions
-                    groupName={inviteGroupName || session?.groupName || 'Your Group'}
-                    groupPasscode={inviteGroupPasscode}
-                  />
-                )}
-              </section>
-            )}
           </div>
         ) : null}
       </div>

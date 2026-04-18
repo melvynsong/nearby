@@ -101,7 +101,8 @@ export default function CreateGroupModal({
       })
 
       const result = await response.json()
-      if (!response.ok || !result?.ok) {
+      const isSuccess = Boolean(response.ok && (result?.ok || (result?.groupId && result?.memberId)))
+      if (!isSuccess) {
         setError(result?.message ?? 'We could not save your changes. Please try again.')
         setLoading(false)
         return
@@ -142,14 +143,14 @@ export default function CreateGroupModal({
         <div className="mt-4 space-y-4">
           {createdEntry ? (
             <>
-              <div className="rounded-2xl border border-teal-100 bg-teal-50 p-3 text-center">
-                <p className="text-sm font-semibold text-teal-800">Group created successfully</p>
-                <p className="mt-1 text-xs text-teal-700">Share your invite now.</p>
+              <div className="rounded-2xl border border-[#d9e1ef] bg-[#eef3fb] p-3 text-center">
+                <p className="text-sm font-semibold text-[#1f355d]">Group created successfully</p>
+                <p className="mt-1 text-xs text-[#2f456f]">Share your invite now.</p>
               </div>
               <GroupInviteActions groupName={createdEntry.groupName} groupPasscode={createdPasscode} />
               <button
                 onClick={close}
-                className="w-full rounded-xl bg-teal-700 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-teal-800"
+                className="w-full rounded-xl bg-[#1f355d] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#162746]"
               >
                 Done
               </button>
@@ -163,7 +164,7 @@ export default function CreateGroupModal({
               value={groupName}
               onChange={(e) => setGroupName(e.target.value)}
               placeholder="e.g. Friday Makan Crew"
-              className="w-full rounded-xl border border-neutral-300 px-3 py-2.5 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+              className="w-full rounded-xl border border-[#d6ddeb] px-3 py-2.5 text-sm outline-none transition focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9]"
             />
           </div>
 
@@ -174,7 +175,7 @@ export default function CreateGroupModal({
               value={passcode}
               onChange={(e) => setPasscode(e.target.value)}
               placeholder="Shared login passcode"
-              className="w-full rounded-xl border border-neutral-300 px-3 py-2.5 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+              className="w-full rounded-xl border border-[#d6ddeb] px-3 py-2.5 text-sm outline-none transition focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9]"
             />
           </div>
 
@@ -189,14 +190,14 @@ export default function CreateGroupModal({
                       value={friend.name}
                       onChange={(e) => updateFriend(friend.id, 'name', e.target.value)}
                       placeholder={`Friend ${idx + 1} name`}
-                      className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                      className="w-full rounded-xl border border-[#d6ddeb] px-3 py-2 text-sm outline-none transition focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9]"
                     />
                     <input
                       type="tel"
                       value={friend.phone}
                       onChange={(e) => updateFriend(friend.id, 'phone', e.target.value)}
                       placeholder="Phone number"
-                      className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                      className="w-full rounded-xl border border-[#d6ddeb] px-3 py-2 text-sm outline-none transition focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9]"
                     />
                   </div>
                   {friends.length > 1 && (
@@ -220,7 +221,7 @@ export default function CreateGroupModal({
           <button
             onClick={handleCreate}
             disabled={loading}
-            className="w-full rounded-xl bg-teal-700 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-teal-800 disabled:opacity-50"
+            className="w-full rounded-xl bg-[#1f355d] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#162746] disabled:opacity-50"
           >
             {loading ? 'Creating group...' : 'Create group'}
           </button>

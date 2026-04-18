@@ -385,6 +385,8 @@ export default function AddPlace() {
       if (note.trim()) body.append('note', note.trim())
 
       if (selectedFile) {
+        const transformToSave = isTransformCustomized ? imageTransform : DEFAULT_IMAGE_TRANSFORM
+        body.append('imageTransform', JSON.stringify(transformToSave))
         body.append('file', selectedFile, selectedFile.name)
       }
 
@@ -433,9 +435,9 @@ export default function AddPlace() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <main className="min-h-screen bg-[#f8f8f6] pb-28" style={{ overflowX: 'hidden', maxWidth: '100vw' }}>
+    <main className="min-h-screen bg-[#f5f6f8] pb-28" style={{ overflowX: 'hidden', maxWidth: '100vw' }}>
       <AppHeader />
-      <div className="mx-auto w-full max-w-md px-4 pt-5 box-border">
+      <div className="nearby-shell px-0 pt-5 box-border">
 
         <button
           onClick={() => router.back()}
@@ -456,7 +458,7 @@ export default function AddPlace() {
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={() => cameraInputRef.current?.click()}
-                  className="rounded-2xl border border-teal-800 bg-teal-700 px-3 py-3 text-left text-white transition-transform duration-200 hover:scale-[1.01] active:scale-[0.99]"
+                  className="rounded-2xl border border-[#162746] bg-[#1f355d] px-3 py-3 text-left text-white transition-transform duration-200 hover:scale-[1.01] active:scale-[0.99]"
                 >
                   <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
@@ -589,7 +591,7 @@ export default function AddPlace() {
                             onClick={() => { setSelectedDish(name); setCustomDish('') }}
                             className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all min-w-0 ${
                               selectedDish === name
-                                ? 'bg-teal-700 text-white'
+                                ? 'bg-[#1f355d] text-white'
                                 : idx === 0
                                 ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                                 : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
@@ -623,7 +625,7 @@ export default function AddPlace() {
                               onClick={() => { setSelectedDish(name); setCustomDish('') }}
                               className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all min-w-0 ${
                                 selectedDish === name
-                                  ? 'bg-teal-700 text-white'
+                                  ? 'bg-[#1f355d] text-white'
                                   : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
                               }`}
                             >
@@ -789,7 +791,7 @@ export default function AddPlace() {
             <button
               onClick={handleSave}
               disabled={saving || loadingDetails || isBlocking}
-              className="w-full rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-3 text-sm font-semibold text-white transition-all duration-300 disabled:opacity-40"
+              className="w-full rounded-xl bg-[#1f355d] hover:bg-[#162746] px-4 py-3 text-sm font-semibold text-white transition-all duration-300 disabled:opacity-40"
             >
               {saving ? 'Saving...' : 'Save food spot'}
             </button>

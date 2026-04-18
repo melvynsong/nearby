@@ -26,7 +26,7 @@ export default function ErrorState({
         <button
           type="button"
           onClick={onPrimary}
-          className="rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-medium text-white transition-transform hover:scale-[1.02] hover:bg-teal-800 active:scale-[0.99]"
+          className="rounded-xl bg-[#1f355d] px-4 py-2.5 text-sm font-medium text-white transition-transform hover:scale-[1.02] hover:bg-[#162746] active:scale-[0.99]"
         >
           {primaryLabel}
         </button>

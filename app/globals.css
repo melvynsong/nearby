@@ -2,16 +2,16 @@
 
 /* ── Nearby Brand Tokens ───────────────────────────────────────────────────── */
 :root {
-  --background: #f8f8f6;
-  --foreground: #171717;
+  --background: #f5f6f8;
+  --foreground: #131b2c;
 
   /* Brand */
-  --brand-teal:        #0f766e;  /* teal-700 — primary actions */
-  --brand-teal-light:  #ccfbf1;  /* teal-100 — tinted surfaces */
-  --brand-teal-mid:    #14b8a6;  /* teal-500 — hover/active */
-  --brand-orange:      #ea580c;  /* orange-600 — accent/beta */
-  --brand-orange-bg:   #fff7ed;  /* orange-50 */
-  --brand-orange-border: #fed7aa; /* orange-200 */
+  --brand-primary:     #1f355d;
+  --brand-primary-ink: #162746;
+  --brand-primary-soft:#e8edf6;
+  --brand-orange:      #cc6f2a;
+  --brand-orange-bg:   #fff4e9;
+  --brand-orange-border:#f2caa8;
 
   /* Surfaces */
   --surface:           #ffffff;
@@ -54,6 +54,14 @@ body {
   font-family: var(--font-geist-sans, system-ui, sans-serif);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+.nearby-shell {
+  width: 90%;
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* ── Utility: hide scrollbar but allow scroll ──────────────────────────────── */

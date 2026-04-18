@@ -31,7 +31,10 @@ export default function GroupInviteActions({ groupName, groupPasscode }: GroupIn
     setError('')
     try {
       const encoded = encodeURIComponent(inviteMessage)
-      const url = `https://wa.me/?text=${encoded}`
+      const isMobile = /iPhone|Android/i.test(navigator.userAgent)
+      const url = isMobile
+        ? `https://wa.me/?text=${encoded}`
+        : `https://web.whatsapp.com/send?text=${encoded}`
       const opened = window.open(url, '_blank', 'noopener,noreferrer')
       if (!opened) {
         setError('Unable to open sharing. Please copy the invite instead.')
@@ -115,9 +118,9 @@ export default function GroupInviteActions({ groupName, groupPasscode }: GroupIn
         <button
           type="button"
           onClick={handleWhatsAppShare}
-          className="w-full rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-800"
+          className="w-full rounded-xl bg-[#1f355d] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#162746]"
         >
-          Share via WhatsApp
+          Share Group
         </button>
         <button
           type="button"
@@ -141,7 +144,7 @@ export default function GroupInviteActions({ groupName, groupPasscode }: GroupIn
         Make sure they have created their account before joining.
       </p>
 
-      {feedback && <p className="mt-2 text-xs font-medium text-teal-700">{feedback}</p>}
+      {feedback && <p className="mt-2 text-xs font-medium text-[#1f355d]">{feedback}</p>}
       {error && <p className="mt-2 text-xs font-medium text-amber-700">{error}</p>}
     </section>
   )

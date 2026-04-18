@@ -3,9 +3,17 @@ import { withBasePath } from '@/lib/base-path'
 
 type BrandMarkProps = {
   clickable?: boolean
+  size?: 'hero' | 'header'
 }
 
-export default function BrandMark({ clickable = true }: BrandMarkProps) {
+export default function BrandMark({ clickable = true, size = 'header' }: BrandMarkProps) {
+  const logoClass = size === 'hero'
+    ? 'h-14 w-auto object-contain shrink-0'
+    : 'h-8 w-auto object-contain shrink-0'
+  const betaClass = size === 'hero'
+    ? 'beta-pulse inline-flex items-center rounded-full bg-[var(--brand-orange-bg)] border border-[var(--brand-orange-border)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--brand-orange)] -translate-y-2'
+    : 'beta-pulse inline-flex items-center rounded-full bg-[var(--brand-orange-bg)] border border-[var(--brand-orange-border)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--brand-orange)] -translate-y-1'
+
   const content = (
     <>
       <img
@@ -14,9 +22,9 @@ export default function BrandMark({ clickable = true }: BrandMarkProps) {
         width={64}
         height={64}
         loading="eager"
-        className="h-7 w-auto object-contain md:h-8 shrink-0 transition-all duration-200 ease-out group-hover:opacity-90 group-hover:scale-[1.02]"
+        className={`${logoClass} transition-all duration-200 ease-out group-hover:opacity-90 group-hover:scale-[1.02]`}
       />
-      <span className="beta-pulse inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-600 dark:bg-orange-900/30 dark:text-orange-300 whitespace-nowrap">
+      <span className={`${betaClass} whitespace-nowrap`}>
         Beta
       </span>
     </>

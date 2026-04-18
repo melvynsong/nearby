@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
     const lngRaw     = formData.get('lng')      as string | null
     const dishName   = ((formData.get('dishName')     as string | null) ?? '').trim()
     const note       = ((formData.get('note')         as string | null) ?? '').trim()
+    const imageTransformRaw = (formData.get('imageTransform') as string | null) ?? ''
     const file       = formData.get('file') as File | null
 
     if (!memberId || !groupId || !googlePlaceId || !name) {
@@ -72,12 +73,26 @@ export async function POST(request: NextRequest) {
     // ── 2. Resolve / insert place ─────────────────────────────────────────
     let placeId: string
     let existingPhotoUrls: string[] = []
+    let existingImageTransforms: Record<string, unknown> = {}
 
-    const { data: existingPlace, error: lookupErr } = await db
+    const preferredLookup = await db
       .from('places')
-      .select('id, photo_urls, lat, lng')
+      .select('id, photo_urls, image_transforms, lat, lng')
       .eq('google_place_id', googlePlaceId)
       .maybeSingle()
+
+    let existingPlace = preferredLookup.data
+    let lookupErr = preferredLookup.error
+
+    if (lookupErr && lookupErr.code === '42703') {
+      const fallbackLookup = await db
+        .from('places')
+        .select('id, photo_urls, lat, lng')
+        .eq('google_place_id', googlePlaceId)
+        .maybeSingle()
+      existingPlace = fallbackLookup.data
+      lookupErr = fallbackLookup.error
+    }
 
     if (lookupErr) {
       console.error('[Nearby][API][Save] Place lookup error:', lookupErr)
@@ -87,6 +102,7 @@ export async function POST(request: NextRequest) {
     if (existingPlace) {
       placeId = existingPlace.id
       existingPhotoUrls = existingPlace.photo_urls ?? []
+      existingImageTransforms = ((existingPlace as { image_transforms?: Record<string, unknown> }).image_transforms) ?? {}
 
       if ((existingPlace.lat == null || existingPlace.lng == null) && lat != null && lng != null) {
         await db.from('places').update({ lat, lng }).eq('id', placeId)
@@ -126,10 +142,29 @@ export async function POST(request: NextRequest) {
       const newUrl = urlData.publicUrl
 
       const merged = [...new Set([...existingPhotoUrls, newUrl])]
-      const { error: updateErr } = await db
+      let nextImageTransforms = existingImageTransforms
+      if (imageTransformRaw) {
+        try {
+          const parsed = JSON.parse(imageTransformRaw)
+          nextImageTransforms = { ...existingImageTransforms, [newUrl]: parsed }
+        } catch {
+          nextImageTransforms = existingImageTransforms
+        }
+      }
+
+      const preferredUpdate = await db
         .from('places')
-        .update({ photo_urls: merged })
+        .update({ photo_urls: merged, image_transforms: nextImageTransforms })
         .eq('id', placeId)
+
+      let updateErr = preferredUpdate.error
+      if (updateErr && updateErr.code === '42703') {
+        const fallbackUpdate = await db
+          .from('places')
+          .update({ photo_urls: merged })
+          .eq('id', placeId)
+        updateErr = fallbackUpdate.error
+      }
 
       if (updateErr) {
         console.error('[Nearby][API][Save] Photo url update error:', updateErr)
