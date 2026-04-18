@@ -319,15 +319,18 @@ function SettingsPage() {
   }
 
   const handleLogout = async () => {
+    console.log('[Nearby][Settings] Logout clicked')
     try {
-      await supabase.auth.signOut()
+      const { error } = await supabase.auth.signOut()
+      console.log('[Nearby][Settings] supabase.auth.signOut result:', error ?? 'ok')
     } catch (err) {
       console.warn('[Nearby][Settings] signOut error (continuing):', err)
     }
     localStorage.removeItem('nearby_session')
     localStorage.removeItem('nearby_register')
     localStorage.removeItem('nearby_passcode_set')
-    router.push(withBasePath('/'))
+    console.log('[Nearby][Settings] localStorage cleared, redirecting to:', withBasePath('/'))
+    window.location.replace(withBasePath('/'))
   }
 
   const saveGroupPasscode = async () => {

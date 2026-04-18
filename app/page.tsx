@@ -42,6 +42,9 @@ export default function Home() {
       return
     }
 
+    // Ensure stale hasSession is cleared if localStorage was wiped (e.g. after logout)
+    setHasSession(false)
+
     const rawRegister = localStorage.getItem('nearby_register')
     if (rawRegister) {
       try {
@@ -57,11 +60,21 @@ export default function Home() {
   }
 
   const handleLogout = async () => {
-    try { await supabase.auth.signOut() } catch (err) { console.warn('[Nearby][Home] signOut error:', err) }
+    console.log('[Nearby][Home] Logout clicked')
+    try {
+      const { error } = await supabase.auth.signOut()
+      console.log('[Nearby][Home] supabase.auth.signOut result:', error ?? 'ok')
+    } catch (err) {
+      console.warn('[Nearby][Home] signOut error:', err)
+    }
     localStorage.removeItem('nearby_session')
     localStorage.removeItem('nearby_register')
     localStorage.removeItem('nearby_passcode_set')
+    console.log('[Nearby][Home] localStorage cleared')
     setRegisterAccount(null)
+    setHasSession(false)
+    console.log('[Nearby][Home] Redirecting to home')
+    window.location.replace(withBasePath('/'))
   }
 
   const handleCreateGroupCta = () => {
