@@ -4,6 +4,15 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
+import TransformedImage from '@/components/TransformedImage'
+import PhotoAdjustSheet from '@/components/PhotoAdjustSheet'
+import {
+  DEFAULT_IMAGE_TRANSFORM,
+  type ImageTransform,
+  type TransformMap,
+  isAdjustmentRecommended,
+  upsertTransformInMap,
+} from '@/lib/image-transform'
 import { supabase } from '@/lib/supabase'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -121,6 +130,10 @@ export default function AddPlace() {
   const [flowState, setFlowState] = useState<FlowState>('idle')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [imageTransform, setImageTransform] = useState<ImageTransform>(DEFAULT_IMAGE_TRANSFORM)
+  const [isTransformCustomized, setIsTransformCustomized] = useState(false)
+  const [showAdjustSheet, setShowAdjustSheet] = useState(false)
+  const [previewImageSize, setPreviewImageSize] = useState<{ width: number; height: number } | null>(null)
   const [aiResult, setAiResult] = useState<AiResult>(emptyAiResult)
   const [aiError, setAiError] = useState('')
 
@@ -246,6 +259,10 @@ export default function AddPlace() {
     setQuery('')
     setAiResult(emptyAiResult)
     setAiError('')
+    setImageTransform(DEFAULT_IMAGE_TRANSFORM)
+    setIsTransformCustomized(false)
+    setShowAdjustSheet(false)
+    setPreviewImageSize(null)
 
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setPreviewUrl(null)
@@ -409,10 +426,11 @@ export default function AddPlace() {
     try {
       let placeId: string
       let existingPhotoUrls: string[] = []
+      let existingImageTransforms: TransformMap = {}
 
       const { data: existing, error: lookupError } = await supabase
         .from('places')
-        .select('id, photo_urls, lat, lng')
+        .select('id, photo_urls, image_transforms, lat, lng')
         .eq('google_place_id', selectedPlace.google_place_id)
         .maybeSingle()
 
@@ -424,6 +442,7 @@ export default function AddPlace() {
       if (existing) {
         placeId = existing.id
         existingPhotoUrls = existing.photo_urls ?? []
+        existingImageTransforms = (existing.image_transforms as TransformMap | null) ?? {}
 
         if ((existing.lat == null || existing.lng == null) && selectedPlace.lat != null && selectedPlace.lng != null) {
           await supabase.from('places').update({ lat: selectedPlace.lat, lng: selectedPlace.lng }).eq('id', placeId)
@@ -466,13 +485,16 @@ export default function AddPlace() {
 
         const { data: urlData } = supabase.storage.from('nearby-place-photos').getPublicUrl(path)
         newPhotoUrls.push(urlData.publicUrl)
+
+        const transformToSave = isTransformCustomized ? imageTransform : DEFAULT_IMAGE_TRANSFORM
+        existingImageTransforms = upsertTransformInMap(existingImageTransforms, urlData.publicUrl, transformToSave)
       }
 
       if (newPhotoUrls.length > 0) {
         const merged = [...new Set([...existingPhotoUrls, ...newPhotoUrls])]
         const { error: updateError } = await supabase
           .from('places')
-          .update({ photo_urls: merged })
+          .update({ photo_urls: merged, image_transforms: existingImageTransforms })
           .eq('id', placeId)
 
         if (updateError) {
@@ -518,6 +540,7 @@ export default function AddPlace() {
   const isBlocking = flowState === 'converting_image' || flowState === 'analyzing'
   const isDishConfirmed = Boolean(selectedDish || customDish.trim())
   const hasPhoto = !!previewUrl || isBlocking
+  const shouldRecommendAdjust = Boolean(previewImageSize && isAdjustmentRecommended(previewImageSize) && !isTransformCustomized)
   const confidence = aiResult.confidence
   const isHighConf = isDishConfirmed && (confidence ?? 0) >= 0.85
   const isMediumConf = !isHighConf && confidence !== null && confidence >= 0.6
@@ -603,13 +626,32 @@ export default function AddPlace() {
             />
 
             {previewUrl && (
-              <div className={`${!isBlocking ? 'mt-4' : ''} w-full`}>
-                <img
-                  src={previewUrl}
-                  alt="Food preview"
-                  className="w-full rounded-2xl border border-neutral-200 object-cover"
-                  style={{ maxWidth: '100%', maxHeight: '240px', display: 'block' }}
-                />
+              <div className={`${!isBlocking ? 'mt-4' : ''} w-full space-y-3`}>
+                <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-2">
+                  <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Final card preview</p>
+                  <TransformedImage
+                    src={previewUrl}
+                    alt="Food preview"
+                    transform={imageTransform}
+                    className="aspect-video rounded-xl border border-neutral-200 bg-neutral-100"
+                    onMetrics={({ image }) => setPreviewImageSize(image)}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAdjustSheet(true)}
+                  className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-100"
+                >
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path d="M4 7h16M4 17h16M8 7v10m8-10v10" />
+                  </svg>
+                  {shouldRecommendAdjust ? 'Adjust photo (recommended)' : 'Adjust photo'}
+                </button>
+
+                <p className="text-xs text-neutral-500">
+                  Optional: adjust only if your photo needs better framing.
+                </p>
               </div>
             )}
           </section>
@@ -900,6 +942,18 @@ export default function AddPlace() {
           <p className="mt-1.5 text-sm" style={{ color: 'rgba(255,255,255,0.55)' }}>This only takes a moment</p>
         </div>
       )}
+
+      <PhotoAdjustSheet
+        isOpen={showAdjustSheet}
+        src={previewUrl}
+        initialTransform={imageTransform}
+        onCancel={() => setShowAdjustSheet(false)}
+        onDone={(nextTransform) => {
+          setImageTransform(nextTransform)
+          setIsTransformCustomized(true)
+          setShowAdjustSheet(false)
+        }}
+      />
     </main>
   )
 }

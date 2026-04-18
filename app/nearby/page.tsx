@@ -3,10 +3,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import TransformedImage from '@/components/TransformedImage'
 import { haversineDistanceKm, formatDistance, getInitials } from '@/lib/nearby-helpers'
 import CreateGroupModal, { type GroupEntry as ModalGroupEntry } from '@/components/CreateGroupModal'
 import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
+import { readTransformFromMap, type TransformMap } from '@/lib/image-transform'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -43,6 +45,7 @@ type PlaceCard = {
   lat: number | null
   lng: number | null
   photo_urls: string[]
+  image_transforms: TransformMap
   recommendations: Rec[]
   categories: Category[]
   newest_at: string
@@ -108,7 +111,7 @@ export default function NearbyHome() {
           note,
           created_at,
           place_id,
-          places ( name, formatted_address, lat, lng, photo_urls, place_categories ( food_categories ( id, name ) ) ),
+          places ( name, formatted_address, lat, lng, photo_urls, image_transforms, place_categories ( food_categories ( id, name ) ) ),
           members ( display_name )
         `)
         .eq('group_id', groupId)
@@ -136,6 +139,7 @@ export default function NearbyHome() {
             lat: r.places?.lat ?? null,
             lng: r.places?.lng ?? null,
             photo_urls: r.places?.photo_urls ?? [],
+            image_transforms: (r.places?.image_transforms as TransformMap | null) ?? {},
             recommendations: [],
             categories: cats,
             newest_at: r.created_at,
@@ -345,13 +349,33 @@ export default function NearbyHome() {
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <AppHeader
         right={
-          <div className="flex flex-col items-end gap-0.5">
-            <p className="text-xs font-medium text-neutral-700 leading-none">{session.memberName}</p>
-            <button onClick={() => router.push('/settings')} className="text-[11px] text-neutral-400 hover:text-neutral-600 transition-colors">
-              Settings
+          <div className="flex items-center gap-2">
+            <div className="hidden min-[390px]:block text-right">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Signed in</p>
+              <p className="text-xs font-medium text-neutral-700 leading-none">{session.memberName}</p>
+            </div>
+
+            <button
+              onClick={() => router.push('/settings')}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 text-xs font-medium text-neutral-700 shadow-sm transition-all hover:bg-neutral-100 active:scale-[0.98]"
+            >
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <circle cx="12" cy="12" r="3.5" />
+                <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 1 1-4 0v-.08A1.7 1.7 0 0 0 8.96 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 1 1 0-4h.08A1.7 1.7 0 0 0 4.6 8.96a1.7 1.7 0 0 0-.34-1.87L4.2 7.03A2 2 0 1 1 7.03 4.2l.06.06A1.7 1.7 0 0 0 8.96 4.6 1.7 1.7 0 0 0 10 3.04V3a2 2 0 1 1 4 0v.08A1.7 1.7 0 0 0 15.04 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 8.96 1.7 1.7 0 0 0 20.96 10H21a2 2 0 1 1 0 4h-.08A1.7 1.7 0 0 0 19.4 15z" />
+              </svg>
+              <span>Settings</span>
             </button>
-            <button onClick={handleLogout} className="text-[11px] text-neutral-400 hover:text-neutral-600 transition-colors">
-              Logout
+
+            <button
+              onClick={handleLogout}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50/70 px-3 text-xs font-medium text-rose-700 transition-all hover:bg-rose-100 active:scale-[0.98]"
+            >
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <path d="M16 17l5-5-5-5" />
+                <path d="M21 12H9" />
+              </svg>
+              <span>Logout</span>
             </button>
           </div>
         }
@@ -501,7 +525,12 @@ export default function NearbyHome() {
                 {/* Photo */}
                 {place.photo_urls.length > 0 && (
                   <div className="relative cursor-pointer" onClick={() => openGallery(place.photo_urls, 0)}>
-                    <img src={place.photo_urls[0]} alt={place.name} className="w-full aspect-video object-cover" />
+                    <TransformedImage
+                      src={place.photo_urls[0]}
+                      alt={place.name}
+                      transform={readTransformFromMap(place.image_transforms, place.photo_urls[0])}
+                      className="aspect-video w-full border-0 rounded-none"
+                    />
                     {place.photo_urls.length > 1 && (
                       <span className="absolute bottom-2 right-2 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white">
                         +{place.photo_urls.length - 1} photos
@@ -588,12 +617,18 @@ export default function NearbyHome() {
           {gallery.photos.length > 1 && (
             <button className="absolute left-4 text-white text-3xl px-2" onClick={(e) => { e.stopPropagation(); prevPhoto() }}>‹</button>
           )}
-          <img
-            src={gallery.photos[gallery.index]}
-            alt="gallery"
-            className="max-h-[85vh] max-w-[90vw] rounded-xl object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
+          <div className="w-[90vw] max-w-3xl" onClick={(e) => e.stopPropagation()}>
+            <TransformedImage
+              src={gallery.photos[gallery.index]}
+              alt="gallery"
+              transform={readTransformFromMap(
+                displayed.find((p) => p.photo_urls.includes(gallery.photos[gallery.index]))?.image_transforms,
+                gallery.photos[gallery.index],
+              )}
+              className="aspect-video w-full rounded-xl border border-white/20 bg-black"
+              imageClassName=""
+            />
+          </div>
           {gallery.photos.length > 1 && (
             <button className="absolute right-4 text-white text-3xl px-2" onClick={(e) => { e.stopPropagation(); nextPhoto() }}>›</button>
           )}
