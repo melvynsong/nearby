@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { slugify } from '@/lib/helpers'
-import { getServerSupabaseClient } from '@/lib/server-supabase'
+import { getServerSupabaseClient, getUserSupabaseClient } from '@/lib/server-supabase'
 
 type FriendInput = { name: string; phone: string }
 
@@ -82,7 +82,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const supabase = getServerSupabaseClient()
+    // Use a user-scoped client for any public.users read/write so RLS
+    // (auth.uid() = id) is satisfied without needing the service-role key.
+    const supabase = bearerToken ? getUserSupabaseClient(bearerToken) : getServerSupabaseClient()
 
     let creatorUserId = ''
     let creatorName = fallbackMemberName
