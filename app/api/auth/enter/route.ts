@@ -1,6 +1,6 @@
 import { pbkdf2Sync, timingSafeEqual } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSupabaseClient } from '@/lib/server-supabase'
+import { getServerSupabaseClient, getServiceRoleSupabaseClient } from '@/lib/server-supabase'
 
 type GroupEntry = {
   memberId: string
@@ -75,7 +75,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, message: 'Enter the last 4 digits of your mobile.' }, { status: 400 })
     }
 
-    const supabase = getServerSupabaseClient()
+    let supabase = getServerSupabaseClient()
+    try {
+      supabase = getServiceRoleSupabaseClient()
+    } catch (error) {
+      console.error('[Nearby][API][Enter] service role unavailable:', error)
+      return NextResponse.json(
+        { ok: false, message: 'Server setup is incomplete. Please contact support.' },
+        { status: 500 },
+      )
+    }
 
     if (method === 'personal') {
       if (!personalPasscode) {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { slugify } from '@/lib/helpers'
-import { getServerSupabaseClient, getUserSupabaseClient } from '@/lib/server-supabase'
+import { getServerSupabaseClient, getServiceRoleSupabaseClient, getUserSupabaseClient } from '@/lib/server-supabase'
 
 type FriendInput = { name: string; phone: string }
 
@@ -83,6 +83,14 @@ export async function POST(request: NextRequest) {
     }
 
     const serverSupabase = getServerSupabaseClient()
+    const serviceSupabase = (() => {
+      try {
+        return getServiceRoleSupabaseClient()
+      } catch (error) {
+        console.warn('[Nearby][API][GroupCreate] service role unavailable:', error)
+        return null
+      }
+    })()
     // Use a user-scoped client for public.users profile reads/writes so RLS
     // (auth.uid() = id) is satisfied without requiring service-role locally.
     const profileSupabase = bearerToken ? getUserSupabaseClient(bearerToken) : serverSupabase
@@ -262,7 +270,9 @@ export async function POST(request: NextRequest) {
 
     async function upsertUser(fullName: string, phone: string): Promise<string> {
       const cleanedPhone = phone.trim()
-      const existing = await profileSupabase
+      const usersClient = serviceSupabase ?? profileSupabase
+
+      const existing = await usersClient
         .from('users')
         .select('id')
         .eq('phone_number', cleanedPhone)
@@ -270,7 +280,7 @@ export async function POST(request: NextRequest) {
 
       if (existing.data?.id) return existing.data.id
 
-      const inserted = await profileSupabase
+      const inserted = await usersClient
         .from('users')
         .insert({
           full_name: fullName,
@@ -317,8 +327,19 @@ export async function POST(request: NextRequest) {
       })
     } catch (error) {
       console.error('[Nearby][API][GroupCreate] Membership/user insert failed:', error)
+
+      const message = typeof (error as { message?: string } | null)?.message === 'string'
+        ? (error as { message: string }).message
+        : ''
+      const likelyRlsFailure = /row-level security|permission denied|rls|insufficient/i.test(message)
+
       return NextResponse.json(
-        { ok: false, message: 'We could not save your changes. Please try again.' },
+        {
+          ok: false,
+          message: likelyRlsFailure
+            ? 'Friend save requires server configuration. Please set SUPABASE_SERVICE_ROLE_KEY and try again.'
+            : 'We could not save your changes. Please try again.',
+        },
         { status: 500 },
       )
     }
