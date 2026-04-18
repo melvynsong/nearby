@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSupabaseClient } from '@/lib/server-supabase'
+import { getServerSupabaseClient, getUserSupabaseClient } from '@/lib/server-supabase'
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,7 +10,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, message: 'userId required' }, { status: 400 })
     }
 
-    const supabase = getServerSupabaseClient()
+    // Use a user-scoped client when a bearer token is present so that the
+    // RLS SELECT policy (auth.uid() = id) is satisfied without needing the
+    // service-role key in the environment.
+    const authHeader = request.headers.get('authorization') ?? ''
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : ''
+    const supabase = bearerToken ? getUserSupabaseClient(bearerToken) : getServerSupabaseClient()
     const { data, error } = await supabase
       .from('users')
       .select('id, has_personal_passcode')

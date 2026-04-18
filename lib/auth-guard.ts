@@ -71,6 +71,10 @@ export async function resolveUserId(): Promise<{ authUserId: string | null; reso
 export async function resolveOnboardingState(): Promise<OnboardingState> {
   const { authUserId, resolvedUserId } = await resolveUserId()
 
+  // Also grab the access token so the server can satisfy RLS.
+  const { data: sessionData } = await supabase.auth.getSession()
+  const accessToken = sessionData?.session?.access_token ?? null
+
   const hasGroup = !!(
     localStorage.getItem('nearby_session') ||
     localStorage.getItem('nearby_register')
@@ -101,7 +105,10 @@ export async function resolveOnboardingState(): Promise<OnboardingState> {
   try {
     const response = await fetch(apiPath('/api/auth/onboarding-state'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
       body: JSON.stringify({ userId: resolvedUserId }),
     })
 
