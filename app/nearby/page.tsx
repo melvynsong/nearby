@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { haversineDistanceKm, formatDistance, directionsUrl, mapUrl, getInitials, buildWhatsAppMessage } from '@/lib/nearby-helpers'
+import { haversineDistanceKm, formatDistance, directionsUrl, getInitials, buildWhatsAppMessage } from '@/lib/nearby-helpers'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -270,9 +270,6 @@ export default function NearbyHome() {
   const openDirections = (place: PlaceCard) => {
     window.open(directionsUrl(userCoords?.lat ?? null, userCoords?.lng ?? null, place.lat, place.lng, place.formatted_address), '_blank')
   }
-  const openMap = (place: PlaceCard) => {
-    window.open(mapUrl(place.lat, place.lng, place.name), '_blank')
-  }
 
   if (!session || !activeGroup) return null
 
@@ -461,12 +458,6 @@ export default function NearbyHome() {
                       className="text-xs text-blue-700 border border-blue-200 rounded-full px-3 py-1 bg-blue-50 hover:bg-blue-100 transition-colors"
                     >
                       Directions
-                    </button>
-                    <button
-                      onClick={() => openMap(place)}
-                      className="text-xs text-neutral-600 border border-neutral-200 rounded-full px-3 py-1 hover:bg-neutral-100 transition-colors"
-                    >
-                      Map
                     </button>
                     <button
                       onClick={() => shareOnWhatsApp(place)}

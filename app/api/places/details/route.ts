@@ -20,6 +20,8 @@ export async function POST(request: NextRequest) {
       'formattedAddress',
       'location',
       'primaryType',
+      'rating',
+      'userRatingCount',
     ].join(',')
 
     const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
@@ -38,13 +40,23 @@ export async function POST(request: NextRequest) {
 
     const data = await res.json()
 
+    const lat = data.location?.latitude ?? null
+    const lng = data.location?.longitude ?? null
+    const mapPreviewUrl =
+      lat != null && lng != null
+        ? `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=16&size=640x280&maptype=roadmap&markers=color:red%7C${lat},${lng}&key=${apiKey}`
+        : null
+
     return Response.json({
       google_place_id: data.id ?? placeId,
       name: data.displayName?.text ?? '',
       formatted_address: data.formattedAddress ?? null,
-      lat: data.location?.latitude ?? null,
-      lng: data.location?.longitude ?? null,
+      lat,
+      lng,
       primary_type: data.primaryType ?? null,
+      rating: data.rating ?? null,
+      user_rating_count: data.userRatingCount ?? null,
+      map_preview_url: mapPreviewUrl,
     })
   } catch (err) {
     console.error('[details] unexpected error:', err)

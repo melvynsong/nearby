@@ -18,6 +18,13 @@ type RegisterData = {
   phone: string
 }
 
+type SessionData = {
+  memberId: string
+  memberName: string
+  groupId: string
+  groupName: string
+}
+
 export default function CreateGroup() {
   const router = useRouter()
   const [register, setRegister] = useState<RegisterData | null>(null)
@@ -29,8 +36,39 @@ export default function CreateGroup() {
   const [done, setDone] = useState(false)
 
   useEffect(() => {
-    const raw = localStorage.getItem('nearby_register')
-    if (raw) setRegister(JSON.parse(raw))
+    const loadCreator = async () => {
+      const rawRegister = localStorage.getItem('nearby_register')
+      if (rawRegister) {
+        setRegister(JSON.parse(rawRegister))
+        return
+      }
+
+      const rawSession = localStorage.getItem('nearby_session')
+      if (!rawSession) return
+
+      const session: SessionData = JSON.parse(rawSession)
+
+      const { data: member } = await supabase
+        .from('members')
+        .select('id, user_id, display_name, phone_last4, users ( phone_number )')
+        .eq('id', session.memberId)
+        .maybeSingle()
+
+      const userId = member?.user_id as string | undefined
+      const phone = (member?.users as { phone_number?: string } | null)?.phone_number
+      const phone4 = (member?.phone_last4 as string | null) ?? (phone ? phoneLast4(phone) : null)
+
+      if (userId && phone && phone4) {
+        setRegister({
+          userId,
+          userName: (member?.display_name as string | null) ?? session.memberName,
+          phone,
+          phone4,
+        })
+      }
+    }
+
+    loadCreator()
   }, [])
 
   const addFriend = () => {
@@ -88,6 +126,12 @@ export default function CreateGroup() {
     return inserted.id
   }
 
+  const upsertGroupMembership = async (userId: string, groupId: string, memberId: string) => {
+    await supabase
+      .from('group_memberships')
+      .upsert({ user_id: userId, group_id: groupId, member_id: memberId }, { onConflict: 'user_id,group_id' })
+  }
+
   const handleCreate = async () => {
     setError('')
     const name = groupName.trim()
@@ -108,8 +152,9 @@ export default function CreateGroup() {
       if (groupErr || !group) throw new Error(`Failed to create group: ${groupErr?.message}`)
       const groupId = group.id
 
-      // 2. Add creator as member
-      await upsertMember(register.userId, register.userName, register.phone4, groupId)
+      // 2. Add creator as member + group membership
+      const creatorMemberId = await upsertMember(register.userId, register.userName, register.phone4, groupId)
+      await upsertGroupMembership(register.userId, groupId, creatorMemberId)
 
       // 3. Add each valid friend
       const validFriends = friends.filter((f) => f.name.trim() && f.phone.trim())
@@ -117,7 +162,21 @@ export default function CreateGroup() {
         const friendPhone = friend.phone.trim()
         const friendLast4 = phoneLast4(friendPhone)
         const friendUserId = await upsertUser(friend.name.trim(), friendPhone)
-        await upsertMember(friendUserId, friend.name.trim(), friendLast4, groupId)
+        const friendMemberId = await upsertMember(friendUserId, friend.name.trim(), friendLast4, groupId)
+        await upsertGroupMembership(friendUserId, groupId, friendMemberId)
+      }
+
+      // Keep logged-in session aware of the new group immediately.
+      const rawSession = localStorage.getItem('nearby_session')
+      if (rawSession) {
+        const current = JSON.parse(rawSession)
+        const existingGroups = Array.isArray(current.allGroups) ? current.allGroups : []
+        const hasGroup = existingGroups.some((g: { groupId: string }) => g.groupId === groupId)
+        const nextGroups = hasGroup
+          ? existingGroups
+          : [...existingGroups, { memberId: creatorMemberId, memberName: register.userName, groupId, groupName: name }]
+
+        localStorage.setItem('nearby_session', JSON.stringify({ ...current, allGroups: nextGroups }))
       }
 
       setDone(true)
@@ -134,13 +193,13 @@ export default function CreateGroup() {
         <div className="w-full max-w-md rounded-2xl bg-white border border-neutral-200 p-8 shadow-sm text-center">
           <p className="text-2xl font-semibold text-neutral-900">Group created ✓</p>
           <p className="mt-2 text-sm text-neutral-500">
-            Your circle is ready. Log in to start saving food spots.
+            Your circle is ready. Start saving food spots in this new group.
           </p>
           <button
-            onClick={() => router.push('/')}
+            onClick={() => router.push('/nearby')}
             className="mt-6 w-full rounded-xl bg-neutral-900 px-4 py-3 text-sm font-medium text-white"
           >
-            Go to login
+            Go to Nearby
           </button>
         </div>
       </main>
