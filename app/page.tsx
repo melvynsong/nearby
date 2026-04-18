@@ -4,6 +4,13 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
+type GroupEntry = {
+  memberId: string
+  memberName: string
+  groupId: string
+  groupName: string
+}
+
 export default function Home() {
   const router = useRouter()
   const [last4, setLast4] = useState('')
@@ -30,6 +37,7 @@ export default function Home() {
 
     setLoading(true)
 
+    // Fetch all members with this phone_last4
     const { data: members } = await supabase
       .from('members')
       .select('id, display_name, group_id')
@@ -41,14 +49,15 @@ export default function Home() {
       return
     }
 
+    // Fetch all groups for those members
     const groupIds = members.map((m) => m.group_id)
     const { data: groups } = await supabase
       .from('groups')
       .select('id, name, access_code')
       .in('id', groupIds)
 
-    let matched: { memberId: string; memberName: string; groupId: string; groupName: string } | null = null
-
+    // Find the group whose password matches
+    let matched: GroupEntry | null = null
     for (const member of members) {
       const group = groups?.find((g) => g.id === member.group_id)
       if (group && group.access_code === password) {
@@ -68,7 +77,16 @@ export default function Home() {
       return
     }
 
-    localStorage.setItem('nearby_session', JSON.stringify(matched))
+    // Build allGroups so the app can switch between groups without re-login
+    const allGroups: GroupEntry[] = members
+      .map((m) => {
+        const g = groups?.find((g) => g.id === m.group_id)
+        if (!g) return null
+        return { memberId: m.id, memberName: m.display_name, groupId: g.id, groupName: g.name }
+      })
+      .filter(Boolean) as GroupEntry[]
+
+    localStorage.setItem('nearby_session', JSON.stringify({ ...matched, allGroups }))
     router.push('/nearby')
   }
 
@@ -118,6 +136,13 @@ export default function Home() {
           >
             {loading ? 'Entering...' : 'Enter Nearby'}
           </button>
+
+          <p className="text-center text-xs text-neutral-400">
+            New here?{' '}
+            <button onClick={() => router.push('/register')} className="underline text-neutral-600">
+              Create an account
+            </button>
+          </p>
         </div>
       </div>
     </main>
