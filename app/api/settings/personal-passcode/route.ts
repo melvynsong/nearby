@@ -1,6 +1,6 @@
 import { randomBytes, pbkdf2Sync } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSupabaseClient } from '@/lib/server-supabase'
+import { getServerSupabaseClient, getUserSupabaseClient } from '@/lib/server-supabase'
 
 /**
  * Hash a passcode with PBKDF2 (Node built-in crypto, no extra deps).
@@ -53,7 +53,10 @@ export async function POST(request: NextRequest) {
     // ── Hash and store ────────────────────────────────────────────────────
     const personal_passcode_hash = hashPasscode(passcode)
 
-    const { error: updateError } = await supabase
+    // Use a user-scoped client so auth.uid() satisfies the RLS UPDATE policy.
+    // Falls back gracefully if service-role key is present (which bypasses RLS).
+    const userClient = getUserSupabaseClient(bearerToken)
+    const { error: updateError } = await userClient
       .from('users')
       .update({ personal_passcode_hash, has_personal_passcode: true })
       .eq('id', verifiedUserId)
