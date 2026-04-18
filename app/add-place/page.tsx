@@ -9,9 +9,7 @@ import PhotoAdjustSheet from '@/components/PhotoAdjustSheet'
 import {
   DEFAULT_IMAGE_TRANSFORM,
   type ImageTransform,
-  type TransformMap,
   isAdjustmentRecommended,
-  upsertTransformInMap,
 } from '@/lib/image-transform'
 import { apiPath, withBasePath } from '@/lib/base-path'
 import { supabase } from '@/lib/supabase'
@@ -352,69 +350,6 @@ export default function AddPlace() {
 
   const clearPlace = () => { setSelectedPlace(null); setQuery(''); setPredictions([]) }
 
-  // ── Resolve dish name to a food_categories row (create if needed)
-  const ensureSupabaseSession = async (): Promise<boolean> => {
-    const { data: existing } = await supabase.auth.getSession()
-    if (existing?.session) return true
-
-    const { data: signInData, error: signInError } = await supabase.auth.signInAnonymously()
-    if (signInError || !signInData?.session) {
-      console.error('[Nearby][AddPlace] Anonymous sign-in failed:', signInError)
-      return false
-    }
-
-    return true
-  }
-
-  const resolveCategoryId = async (): Promise<string | null> => {
-    if (!session) return null
-    const dishName = (customDish.trim() || selectedDish || '').trim()
-    if (!dishName) return null
-
-    const match = categories.find((c) => c.name.toLowerCase() === dishName.toLowerCase())
-    if (match) return match.id
-
-    const { data: existing } = await supabase
-      .from('food_categories')
-      .select('id')
-      .eq('group_id', session.groupId)
-      .ilike('name', dishName)
-      .maybeSingle()
-
-    if (existing?.id) return existing.id
-
-    const { data: inserted, error: insertErr } = await supabase
-      .from('food_categories')
-      .insert({
-        name: dishName,
-        group_id: session.groupId,
-        created_by_member_id: session.memberId,
-      })
-      .select('id, name')
-      .single()
-
-    if (inserted?.id) {
-      setCategories((prev) => {
-        if (prev.some((cat) => cat.id === inserted.id)) return prev
-        return [...prev, { id: inserted.id, name: inserted.name }].sort((a, b) => a.name.localeCompare(b.name))
-      })
-      return inserted.id
-    }
-
-    if (insertErr) {
-      const { data: duplicate } = await supabase
-        .from('food_categories')
-        .select('id')
-        .eq('group_id', session.groupId)
-        .ilike('name', dishName)
-        .maybeSingle()
-
-      return duplicate?.id ?? null
-    }
-
-    return null
-  }
-
   const handleSave = async () => {
     setError('')
     setShowSaveErrorCard(false)
@@ -429,14 +364,8 @@ export default function AddPlace() {
       return
     }
 
-    const hasAuthSession = await ensureSupabaseSession()
-    if (!hasAuthSession) {
-      setError('Sign-in session is missing. Please return to home and sign in again.')
-      return
-    }
-
-    const categoryId = await resolveCategoryId()
-    if (!categoryId) {
+    const dishName = (customDish.trim() || selectedDish || '').trim()
+    if (!dishName) {
       setError('Please confirm the dish before saving.')
       return
     }
@@ -444,104 +373,29 @@ export default function AddPlace() {
     setSaving(true)
 
     try {
-      let placeId: string
-      let existingPhotoUrls: string[] = []
-      let existingImageTransforms: TransformMap = {}
+      const body = new FormData()
+      body.append('memberId',     session.memberId)
+      body.append('groupId',      session.groupId)
+      body.append('googlePlaceId', selectedPlace.google_place_id)
+      body.append('name',         selectedPlace.name)
+      if (selectedPlace.formatted_address) body.append('address', selectedPlace.formatted_address)
+      if (selectedPlace.lat != null) body.append('lat', String(selectedPlace.lat))
+      if (selectedPlace.lng != null) body.append('lng', String(selectedPlace.lng))
+      body.append('dishName',     dishName)
+      if (note.trim()) body.append('note', note.trim())
 
-      const { data: existing, error: lookupError } = await supabase
-        .from('places')
-        .select('id, photo_urls, image_transforms, lat, lng')
-        .eq('google_place_id', selectedPlace.google_place_id)
-        .maybeSingle()
-
-      if (lookupError) {
-        console.error('[Nearby][Save] Place lookup failed:', lookupError)
-        throw new Error('SAVE_LOOKUP_FAILED')
-      }
-
-      if (existing) {
-        placeId = existing.id
-        existingPhotoUrls = existing.photo_urls ?? []
-        existingImageTransforms = (existing.image_transforms as TransformMap | null) ?? {}
-
-        if ((existing.lat == null || existing.lng == null) && selectedPlace.lat != null && selectedPlace.lng != null) {
-          await supabase.from('places').update({ lat: selectedPlace.lat, lng: selectedPlace.lng }).eq('id', placeId)
-        }
-      } else {
-        const { data: inserted, error: insertError } = await supabase
-          .from('places')
-          .insert({
-            google_place_id: selectedPlace.google_place_id,
-            name: selectedPlace.name,
-            formatted_address: selectedPlace.formatted_address,
-            lat: selectedPlace.lat,
-            lng: selectedPlace.lng,
-            photo_urls: [],
-          })
-          .select('id')
-          .single()
-
-        if (insertError || !inserted) {
-          console.error('[Nearby][Save] Place insert failed:', insertError)
-          throw new Error('SAVE_PLACE_INSERT_FAILED')
-        }
-
-        placeId = inserted.id
-      }
-
-      const newPhotoUrls: string[] = []
       if (selectedFile) {
-        const ext = selectedFile.name.split('.').pop() ?? 'jpg'
-        const path = `${placeId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-
-        const { error: uploadError } = await supabase.storage
-          .from('nearby-place-photos')
-          .upload(path, selectedFile, { upsert: false })
-
-        if (uploadError) {
-          console.error('[Nearby][Save] Photo upload failed:', uploadError)
-          throw new Error('SAVE_PHOTO_UPLOAD_FAILED')
-        }
-
-        const { data: urlData } = supabase.storage.from('nearby-place-photos').getPublicUrl(path)
-        newPhotoUrls.push(urlData.publicUrl)
-
         const transformToSave = isTransformCustomized ? imageTransform : DEFAULT_IMAGE_TRANSFORM
-        existingImageTransforms = upsertTransformInMap(existingImageTransforms, urlData.publicUrl, transformToSave)
+        body.append('imageTransform', JSON.stringify(transformToSave))
+        body.append('file', selectedFile, selectedFile.name)
       }
 
-      if (newPhotoUrls.length > 0) {
-        const merged = [...new Set([...existingPhotoUrls, ...newPhotoUrls])]
-        const { error: updateError } = await supabase
-          .from('places')
-          .update({ photo_urls: merged, image_transforms: existingImageTransforms })
-          .eq('id', placeId)
+      const res  = await fetch(apiPath('/api/places/save'), { method: 'POST', body })
+      const data = await res.json() as { ok: boolean; message?: string }
 
-        if (updateError) {
-          console.error('[Nearby][Save] Place photo update failed:', updateError)
-          throw new Error('SAVE_PHOTO_UPDATE_FAILED')
-        }
-      }
-
-      const { error: recError } = await supabase.from('recommendations').insert({
-        group_id: session.groupId,
-        member_id: session.memberId,
-        place_id: placeId,
-        note: note.trim() || null,
-      })
-
-      if (recError) {
-        console.error('[Nearby][Save] Recommendation insert failed:', recError)
-        throw new Error('SAVE_RECOMMENDATION_FAILED')
-      }
-
-      const { error: placeCatError } = await supabase
-        .from('place_categories')
-        .upsert({ place_id: placeId, category_id: categoryId }, { onConflict: 'place_id,category_id' })
-
-      if (placeCatError) {
-        console.error('[Nearby][Save] Category link failed:', placeCatError)
-        throw new Error('SAVE_CATEGORY_LINK_FAILED')
+      if (!data.ok) {
+        console.error('[Nearby][Save] Server save failed:', data.message)
+        throw new Error(data.message ?? 'Save failed')
       }
 
       router.push(withBasePath('/nearby'))
