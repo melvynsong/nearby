@@ -53,6 +53,14 @@ export default function Home() {
     return <NearbyHome />
   }
 
+  const handleLogout = async () => {
+    try { await supabase.auth.signOut() } catch (err) { console.warn('[Nearby][Home] signOut error:', err) }
+    localStorage.removeItem('nearby_session')
+    localStorage.removeItem('nearby_register')
+    localStorage.removeItem('nearby_passcode_set')
+    setRegisterAccount(null)
+  }
+
   const handleCreateGroupCta = () => {
     const session = localStorage.getItem('nearby_session')
     const register = localStorage.getItem('nearby_register')
@@ -285,9 +293,17 @@ export default function Home() {
           Have a passcode? Join Group
         </button>
         {registerAccount && (
-          <p className="mt-3 text-xs text-neutral-500">
-            Signed in as {registerAccount.userName}. You do not have a group yet.
-          </p>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <p className="text-xs text-neutral-500">
+              Signed in as {registerAccount.userName}. You do not have a group yet.
+            </p>
+            <button
+              onClick={() => void handleLogout()}
+              className="shrink-0 text-xs font-medium text-neutral-500 hover:text-neutral-800 underline underline-offset-2"
+            >
+              Log out
+            </button>
+          </div>
         )}
       </section>
 
