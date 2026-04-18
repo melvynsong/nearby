@@ -86,6 +86,19 @@ export default function Home() {
     router.push(withBasePath('/register'))
   }
 
+  const ensureSupabaseSession = async (): Promise<boolean> => {
+    const { data: existing } = await supabase.auth.getSession()
+    if (existing?.session) return true
+
+    const { data: signInData, error: signInError } = await supabase.auth.signInAnonymously()
+    if (signInError || !signInData?.session) {
+      console.error('[Nearby][Auth] Anonymous sign-in failed on entry:', signInError)
+      return false
+    }
+
+    return true
+  }
+
   const handleEnter = async () => {
     setError('')
     setShowLoginErrorCard(false)
@@ -117,6 +130,13 @@ export default function Home() {
       const result = await response.json()
       if (!response.ok || !result?.ok) {
         setError(result?.message ?? 'Incorrect details.')
+        return
+      }
+
+      // Ensure client has an authenticated Supabase session for RLS-protected writes.
+      const hasAuthSession = await ensureSupabaseSession()
+      if (!hasAuthSession) {
+        setError('Sign-in session could not be prepared. Please try again.')
         return
       }
 

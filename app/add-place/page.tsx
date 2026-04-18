@@ -353,6 +353,19 @@ export default function AddPlace() {
   const clearPlace = () => { setSelectedPlace(null); setQuery(''); setPredictions([]) }
 
   // ── Resolve dish name to a food_categories row (create if needed)
+  const ensureSupabaseSession = async (): Promise<boolean> => {
+    const { data: existing } = await supabase.auth.getSession()
+    if (existing?.session) return true
+
+    const { data: signInData, error: signInError } = await supabase.auth.signInAnonymously()
+    if (signInError || !signInData?.session) {
+      console.error('[Nearby][AddPlace] Anonymous sign-in failed:', signInError)
+      return false
+    }
+
+    return true
+  }
+
   const resolveCategoryId = async (): Promise<string | null> => {
     if (!session) return null
     const dishName = (customDish.trim() || selectedDish || '').trim()
@@ -413,6 +426,12 @@ export default function AddPlace() {
 
     if (!selectedPlace) {
       setError('Please search for and select a place.')
+      return
+    }
+
+    const hasAuthSession = await ensureSupabaseSession()
+    if (!hasAuthSession) {
+      setError('Sign-in session is missing. Please return to home and sign in again.')
       return
     }
 
