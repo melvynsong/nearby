@@ -113,7 +113,7 @@ export default function NearbyHome() {
           note,
           created_at,
           place_id,
-          places ( name, formatted_address, lat, lng, photo_urls, image_transforms, place_categories ( food_categories ( id, name ) ) ),
+          places ( name, formatted_address, lat, lng, photo_urls, place_categories ( food_categories ( id, name ) ) ),
           members ( display_name )
         `)
         .eq('group_id', groupId)
@@ -141,7 +141,7 @@ export default function NearbyHome() {
             lat: r.places?.lat ?? null,
             lng: r.places?.lng ?? null,
             photo_urls: r.places?.photo_urls ?? [],
-            image_transforms: (r.places?.image_transforms as TransformMap | null) ?? {},
+            image_transforms: {},
             recommendations: [],
             categories: cats,
             newest_at: r.created_at,
