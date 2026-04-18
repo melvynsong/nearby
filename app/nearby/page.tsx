@@ -170,7 +170,7 @@ export default function NearbyHome() {
       })
       const data = await res.json()
       const label: string | null = data.locationLabel ?? null
-      console.log('[Location] reverse geocode result:', label)
+      console.log('[Location] reverse geocode result:', label, '| Google API status:', data._apiStatus ?? 'unknown')
       setAreaName(label)
     } catch (err: any) {
       const reason = err?.name === 'TimeoutError' ? 'timeout' : err?.message

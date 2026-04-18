@@ -64,12 +64,13 @@ export async function POST(request: NextRequest) {
 
     if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
       console.error('[reverse] Geocoding API status:', data.status, data.error_message ?? '')
-      return Response.json({ locationLabel: null })
+      // Return status so client can log it without needing Vercel logs
+      return Response.json({ locationLabel: null, _apiStatus: data.status })
     }
 
     const locationLabel = extractLabel(data.results ?? [])
     console.log('[reverse] final locationLabel:', locationLabel)
-    return Response.json({ locationLabel })
+    return Response.json({ locationLabel, _apiStatus: 'OK' })
   } catch (err) {
     console.error('[reverse] unexpected error:', err)
     return Response.json({ locationLabel: null })
