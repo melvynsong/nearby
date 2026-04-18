@@ -33,7 +33,7 @@ export default function CreateGroupModal({
   onGroupCreated,
 }: Props) {
   const [groupName, setGroupName] = useState('')
-  const [password, setPassword] = useState('')
+  const [passcode, setPasscode] = useState('')
   const [friends, setFriends] = useState<Friend[]>([{ id: '1', name: '', phone: '' }])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -54,7 +54,7 @@ export default function CreateGroupModal({
 
   const reset = () => {
     setGroupName('')
-    setPassword('')
+    setPasscode('')
     setFriends([{ id: '1', name: '', phone: '' }])
     setError('')
     setLoading(false)
@@ -137,7 +137,7 @@ export default function CreateGroupModal({
     setError('')
 
     const name = groupName.trim()
-    const accessCode = password.trim()
+    const accessCode = passcode.trim()
 
     if (!name) {
       setError('Please enter a group name.')
@@ -145,7 +145,7 @@ export default function CreateGroupModal({
     }
 
     if (!accessCode) {
-      setError('Please set a group password.')
+      setError('Please set a group passcode.')
       return
     }
 
@@ -235,12 +235,12 @@ export default function CreateGroupModal({
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-neutral-700">Group password</label>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-700">Group passcode</label>
             <input
               type="text"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Shared login password"
+              value={passcode}
+              onChange={(e) => setPasscode(e.target.value)}
+              placeholder="Shared login passcode"
               className="w-full rounded-xl border border-neutral-300 px-3 py-2.5 text-sm outline-none focus:border-neutral-500"
             />
           </div>

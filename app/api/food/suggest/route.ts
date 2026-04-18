@@ -54,6 +54,7 @@ function extractJson(content: string): FoodSuggestResponse | null {
 }
 
 async function requestAiSuggestion(apiKey: string, imageUrl: string): Promise<FoodSuggestResponse> {
+  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini'
   const prompt = `You are helping users classify food photos in a mobile app.
 Analyze the image and return JSON only (no markdown).
 
@@ -81,7 +82,7 @@ Rules:
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model,
       temperature: 0.2,
       max_tokens: 450,
       messages: [

@@ -9,6 +9,7 @@ export default function Register() {
   const router = useRouter()
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
+  const [personalPasscode, setPersonalPasscode] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
@@ -17,9 +18,11 @@ export default function Register() {
     setError('')
     const name = fullName.trim()
     const ph = phone.trim()
+    const code = personalPasscode.trim()
 
     if (!name) { setError('Please enter your name.'); return }
     if (ph.replace(/\D/g, '').length < 8) { setError('Please enter a valid phone number.'); return }
+    if (code && code.length < 4) { setError('Personal passcode must be at least 4 characters.'); return }
 
     const last4 = phoneLast4(ph)
     setSaving(true)
@@ -30,16 +33,22 @@ export default function Register() {
 
       const { data: existing } = await supabase
         .from('users')
-        .select('id')
+        .select('id, personal_passcode')
         .eq('phone_number', ph)
         .maybeSingle()
 
       if (existing) {
         userId = existing.id
+        if (code && !existing.personal_passcode) {
+          await supabase
+            .from('users')
+            .update({ personal_passcode: code })
+            .eq('id', userId)
+        }
       } else {
         const { data: inserted, error: insertErr } = await supabase
           .from('users')
-          .insert({ full_name: name, phone_number: ph, phone_last4: last4 })
+          .insert({ full_name: name, phone_number: ph, phone_last4: last4, personal_passcode: code || null })
           .select('id')
           .single()
 
@@ -104,6 +113,22 @@ export default function Register() {
               placeholder="e.g. Melvyn Song"
               className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-neutral-500"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-neutral-800 mb-2">
+              Personal passcode (optional)
+            </label>
+            <input
+              type="password"
+              value={personalPasscode}
+              onChange={(e) => setPersonalPasscode(e.target.value)}
+              placeholder="Use this for quick return access"
+              className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-neutral-500"
+            />
+            <p className="mt-1.5 text-xs text-neutral-400">
+              You can still join using your group's passcode.
+            </p>
           </div>
 
           <div>

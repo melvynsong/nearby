@@ -29,7 +29,7 @@ export default function CreateGroup() {
   const router = useRouter()
   const [register, setRegister] = useState<RegisterData | null>(null)
   const [groupName, setGroupName] = useState('')
-  const [password, setPassword] = useState('')
+  const [passcode, setPasscode] = useState('')
   const [friends, setFriends] = useState<Friend[]>([{ id: '1', name: '', phone: '' }])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -136,7 +136,7 @@ export default function CreateGroup() {
     setError('')
     const name = groupName.trim()
     if (!name) { setError('Please enter a group name.'); return }
-    if (!password.trim()) { setError('Please set a group password.'); return }
+    if (!passcode.trim()) { setError('Please set a group passcode.'); return }
     if (!register) { setError('Registration data missing. Please register first.'); return }
 
     setSaving(true)
@@ -145,7 +145,7 @@ export default function CreateGroup() {
       const slug = slugify(name)
       const { data: group, error: groupErr } = await supabase
         .from('groups')
-        .insert({ name, slug, access_code: password.trim() })
+        .insert({ name, slug, access_code: passcode.trim() })
         .select('id')
         .single()
 
@@ -239,17 +239,17 @@ export default function CreateGroup() {
 
             <div>
               <label className="block text-sm font-medium text-neutral-800 mb-2">
-                Group password
+                Group passcode
               </label>
               <input
                 type="text"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={passcode}
+                onChange={(e) => setPasscode(e.target.value)}
                 placeholder="Share this with your friends to join"
                 className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-neutral-500"
               />
               <p className="mt-1.5 text-xs text-neutral-400">
-                Friends use this password + their last 4 digits to log in.
+                Friends use this passcode + their last 4 digits to log in.
               </p>
             </div>
           </div>
