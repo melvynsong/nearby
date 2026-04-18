@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
+import GroupInviteActions from '@/components/GroupInviteActions'
 import { supabase } from '@/lib/supabase'
 
 type Session = {
@@ -37,7 +38,37 @@ export default function SettingsPage() {
   const [groupPasscodeSaved, setGroupPasscodeSaved] = useState(false)
 
   const [isGroupCreator, setIsGroupCreator] = useState(false)
+  const [inviteGroupName, setInviteGroupName] = useState('')
+  const [inviteGroupPasscode, setInviteGroupPasscode] = useState('')
+  const [inviteLoading, setInviteLoading] = useState(false)
+  const [inviteError, setInviteError] = useState('')
   const [loadError, setLoadError] = useState(false)
+
+  const loadInviteDetails = async (groupId: string, userId: string) => {
+    setInviteLoading(true)
+    setInviteError('')
+    try {
+      const response = await fetch('/api/settings/group-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId, requesterUserId: userId }),
+      })
+
+      const result = await response.json()
+      if (!response.ok || !result?.ok) {
+        setInviteError(result?.message ?? 'We could not load invite details right now. Please try again.')
+        return
+      }
+
+      setInviteGroupName(result.groupName)
+      setInviteGroupPasscode(result.groupPasscode)
+    } catch (error) {
+      console.error('[Nearby][Settings] Invite details load failed:', error)
+      setInviteError('We could not load invite details right now. Please try again.')
+    } finally {
+      setInviteLoading(false)
+    }
+  }
 
   const loadSettings = async () => {
     try {
@@ -99,7 +130,11 @@ export default function SettingsPage() {
       }
 
       const creatorId = (group as { created_by_user_id?: string | null } | null)?.created_by_user_id ?? null
-      setIsGroupCreator(Boolean(creatorId && creatorId === userId))
+      const creator = Boolean(creatorId && creatorId === userId)
+      setIsGroupCreator(creator)
+      if (creator) {
+        await loadInviteDetails(parsed.groupId, userId)
+      }
     } catch (error) {
       console.error('[Nearby][Settings] Load failed:', error)
       setLoadError(true)
@@ -202,6 +237,7 @@ export default function SettingsPage() {
       }
 
       setGroupPasscodeSaved(true)
+      setInviteGroupPasscode(nextPasscode)
       setGroupPasscode('')
     } catch (error) {
       console.error('[Nearby][Save][GroupPasscode] Request failed:', error)
@@ -321,6 +357,27 @@ export default function SettingsPage() {
                 </p>
               )}
             </section>
+
+            {isGroupCreator && (
+              <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+                {inviteLoading ? (
+                  <p className="text-sm text-neutral-500">Loading invite details...</p>
+                ) : inviteError ? (
+                  <ErrorState
+                    title="Something did not go through"
+                    message={inviteError}
+                    onPrimary={() => {
+                      if (session && profile) void loadInviteDetails(session.groupId, profile.userId)
+                    }}
+                  />
+                ) : (
+                  <GroupInviteActions
+                    groupName={inviteGroupName || session?.groupName || 'Your Group'}
+                    groupPasscode={inviteGroupPasscode}
+                  />
+                )}
+              </section>
+            )}
           </div>
         ) : null}
       </div>
