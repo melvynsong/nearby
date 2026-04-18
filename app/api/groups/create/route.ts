@@ -82,16 +82,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Use a user-scoped client for any public.users read/write so RLS
-    // (auth.uid() = id) is satisfied without needing the service-role key.
-    const supabase = bearerToken ? getUserSupabaseClient(bearerToken) : getServerSupabaseClient()
+    const serverSupabase = getServerSupabaseClient()
+    // Use a user-scoped client for public.users profile reads/writes so RLS
+    // (auth.uid() = id) is satisfied without requiring service-role locally.
+    const profileSupabase = bearerToken ? getUserSupabaseClient(bearerToken) : serverSupabase
 
     let creatorUserId = ''
     let creatorName = fallbackMemberName
     let creatorPhone4 = ''
 
     if (sessionMemberId) {
-      const { data: creatorMember, error: creatorError } = await supabase
+      const { data: creatorMember, error: creatorError } = await serverSupabase
         .from('members')
         .select('id, user_id, display_name, phone_last4, users ( phone_number )')
         .eq('id', sessionMemberId)
@@ -118,7 +119,7 @@ export async function POST(request: NextRequest) {
       creatorPhone4 = (creatorMember.phone_last4 as string | null) ?? phoneLast4(creatorPhone)
     } else {
       const requestedUserId = requesterUserId || effectiveAuthUserId
-      const { data: creatorUser, error: userError } = await supabase
+      const { data: creatorUser, error: userError } = await profileSupabase
         .from('users')
         .select('id, full_name, phone_number, phone_last4')
         .eq('id', requestedUserId)
@@ -156,7 +157,7 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        const { data: insertedProfile, error: insertProfileError } = await supabase
+        const { data: insertedProfile, error: insertProfileError } = await profileSupabase
           .from('users')
           .upsert({
             id: effectiveAuthUserId,
@@ -204,14 +205,14 @@ export async function POST(request: NextRequest) {
     const slug = slugify(groupName)
 
     let groupId = ''
-    const createWithOwner = await supabase
+    const createWithOwner = await serverSupabase
       .from('groups')
       .insert({ name: groupName, slug, access_code: passcode, created_by_user_id: creatorUserId })
       .select('id')
       .single()
 
     if (createWithOwner.error?.message?.includes('created_by_user_id')) {
-      const fallbackCreate = await supabase
+      const fallbackCreate = await serverSupabase
         .from('groups')
         .insert({ name: groupName, slug, access_code: passcode })
         .select('id')
@@ -237,7 +238,7 @@ export async function POST(request: NextRequest) {
     }
 
     async function upsertMember(userId: string, displayName: string, last4: string, targetGroupId: string): Promise<string> {
-      const existing = await supabase
+      const existing = await serverSupabase
         .from('members')
         .select('id')
         .eq('user_id', userId)
@@ -246,7 +247,7 @@ export async function POST(request: NextRequest) {
 
       if (existing.data?.id) return existing.data.id
 
-      const inserted = await supabase
+      const inserted = await serverSupabase
         .from('members')
         .insert({ display_name: displayName, group_id: targetGroupId, phone_last4: last4, user_id: userId })
         .select('id')
@@ -261,7 +262,7 @@ export async function POST(request: NextRequest) {
 
     async function upsertUser(fullName: string, phone: string): Promise<string> {
       const cleanedPhone = phone.trim()
-      const existing = await supabase
+      const existing = await profileSupabase
         .from('users')
         .select('id')
         .eq('phone_number', cleanedPhone)
@@ -269,7 +270,7 @@ export async function POST(request: NextRequest) {
 
       if (existing.data?.id) return existing.data.id
 
-      const inserted = await supabase
+      const inserted = await profileSupabase
         .from('users')
         .insert({
           full_name: fullName,
@@ -287,7 +288,7 @@ export async function POST(request: NextRequest) {
     }
 
     async function upsertMembership(userId: string, targetGroupId: string, memberId: string) {
-      const membership = await supabase
+      const membership = await serverSupabase
         .from('group_memberships')
         .upsert({ user_id: userId, group_id: targetGroupId, member_id: memberId }, { onConflict: 'user_id,group_id' })
 
