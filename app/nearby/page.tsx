@@ -108,7 +108,7 @@ export default function NearbyHome() {
             body: JSON.stringify(coords),
           })
           const data = await res.json()
-          setLocationLabel(data.label ?? null)
+          setLocationLabel(data.locationLabel ?? null)
         } catch {
           setLocationLabel(null)
         }
@@ -249,7 +249,7 @@ export default function NearbyHome() {
         {/* Location section */}
         <div className="mt-4">
           {locationStatus === 'requesting' && (
-            <p className="text-xs text-neutral-400">Finding your location…</p>
+            <p className="text-xs text-neutral-400">Finding where you are…</p>
           )}
 
           {locationStatus === 'granted' && (
@@ -258,7 +258,9 @@ export default function NearbyHome() {
               className="flex items-center gap-1.5 text-left group"
             >
               <span className="text-xs text-neutral-400 group-hover:text-neutral-600 transition-colors">
-                {locationLabel ? `You are now at ${locationLabel}` : 'Showing places near you'}
+                {locationLabel
+                  ? `You are currently near ${locationLabel}`
+                  : 'You are currently near your location'}
               </span>
               <span className="text-neutral-300 group-hover:text-neutral-500 transition-colors text-xs">↻</span>
             </button>

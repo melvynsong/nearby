@@ -1,26 +1,28 @@
 import type { NextRequest } from 'next/server'
 
-// Priority order for result_type — most specific to least
-const PREFERRED_TYPES = [
-  'neighborhood',
-  'sublocality_level_1',
-  'sublocality',
-  'locality',
-  'administrative_area_level_2',
-  'administrative_area_level_1',
-]
+function extractLabel(results: any[]): string {
+  // Use the first result's address_components — it's the most specific match
+  const components: any[] = results[0]?.address_components ?? []
 
-function pickLabel(results: any[]): string | null {
-  for (const type of PREFERRED_TYPES) {
-    for (const result of results) {
-      if (result.types?.includes(type)) {
-        return result.address_components?.find((c: any) => c.types.includes(type))?.long_name
-          ?? result.formatted_address
-      }
-    }
-  }
-  // Fallback: first result's formatted address
-  return results[0]?.formatted_address ?? null
+  const find = (types: string[]) =>
+    components.find((c) => types.some((t) => c.types.includes(t)))
+
+  const label =
+    find(['sublocality_level_1'])?.long_name ||
+    find(['neighborhood'])?.long_name ||
+    find(['locality'])?.long_name ||
+    shortenAddress(results[0]?.formatted_address)
+
+  return label ?? 'your location'
+}
+
+// Strip postal codes and trim to the first 2–3 meaningful words
+function shortenAddress(address: string | undefined): string | null {
+  if (!address) return null
+  return address
+    .replace(/\b\d{5,}\b/g, '')   // remove postal codes
+    .replace(/,.*$/, '')           // keep only the first segment before a comma
+    .trim()
 }
 
 export async function POST(request: NextRequest) {
@@ -39,7 +41,6 @@ export async function POST(request: NextRequest) {
 
     const url = new URL('https://maps.googleapis.com/maps/api/geocode/json')
     url.searchParams.set('latlng', `${lat},${lng}`)
-    url.searchParams.set('result_type', PREFERRED_TYPES.join('|'))
     url.searchParams.set('key', apiKey)
 
     const res = await fetch(url.toString())
@@ -55,8 +56,8 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: `Geocoding error: ${data.status}` }, { status: 502 })
     }
 
-    const label = pickLabel(data.results ?? [])
-    return Response.json({ label })
+    const locationLabel = extractLabel(data.results ?? [])
+    return Response.json({ locationLabel })
   } catch (err) {
     console.error('[reverse] unexpected error:', err)
     return Response.json({ error: 'Internal server error' }, { status: 500 })
