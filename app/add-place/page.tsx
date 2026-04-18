@@ -385,8 +385,6 @@ export default function AddPlace() {
       if (note.trim()) body.append('note', note.trim())
 
       if (selectedFile) {
-        const transformToSave = isTransformCustomized ? imageTransform : DEFAULT_IMAGE_TRANSFORM
-        body.append('imageTransform', JSON.stringify(transformToSave))
         body.append('file', selectedFile, selectedFile.name)
       }
 

@@ -24,7 +24,6 @@ export async function POST(request: NextRequest) {
     const lngRaw     = formData.get('lng')      as string | null
     const dishName   = ((formData.get('dishName')     as string | null) ?? '').trim()
     const note       = ((formData.get('note')         as string | null) ?? '').trim()
-    const imageTransformRaw = formData.get('imageTransform') as string | null
     const file       = formData.get('file') as File | null
 
     if (!memberId || !groupId || !googlePlaceId || !name) {
@@ -73,11 +72,10 @@ export async function POST(request: NextRequest) {
     // ── 2. Resolve / insert place ─────────────────────────────────────────
     let placeId: string
     let existingPhotoUrls: string[] = []
-    let existingImageTransforms: Record<string, unknown> = {}
 
     const { data: existingPlace, error: lookupErr } = await db
       .from('places')
-      .select('id, photo_urls, image_transforms, lat, lng')
+      .select('id, photo_urls, lat, lng')
       .eq('google_place_id', googlePlaceId)
       .maybeSingle()
 
@@ -89,7 +87,6 @@ export async function POST(request: NextRequest) {
     if (existingPlace) {
       placeId = existingPlace.id
       existingPhotoUrls = existingPlace.photo_urls ?? []
-      existingImageTransforms = (existingPlace.image_transforms as Record<string, unknown> | null) ?? {}
 
       if ((existingPlace.lat == null || existingPlace.lng == null) && lat != null && lng != null) {
         await db.from('places').update({ lat, lng }).eq('id', placeId)
@@ -128,20 +125,10 @@ export async function POST(request: NextRequest) {
       const { data: urlData } = db.storage.from('nearby-place-photos').getPublicUrl(path)
       const newUrl = urlData.publicUrl
 
-      // Merge image transform
-      let updatedTransforms = { ...existingImageTransforms }
-      if (imageTransformRaw) {
-        try {
-          updatedTransforms[newUrl] = JSON.parse(imageTransformRaw)
-        } catch {
-          // ignore bad transform JSON
-        }
-      }
-
       const merged = [...new Set([...existingPhotoUrls, newUrl])]
       const { error: updateErr } = await db
         .from('places')
-        .update({ photo_urls: merged, image_transforms: updatedTransforms })
+        .update({ photo_urls: merged })
         .eq('id', placeId)
 
       if (updateErr) {
