@@ -2,10 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import { phoneLast4 } from '@/lib/helpers'
 import AppHeader from '@/components/AppHeader'
-import { withBasePath } from '@/lib/base-path'
+import { apiPath, withBasePath } from '@/lib/base-path'
 
 export default function Register() {
   const router = useRouter()
@@ -27,33 +26,29 @@ export default function Register() {
     setSaving(true)
 
     try {
-      // Check if user with this phone already exists — if so, reuse them
-      let userId: string
+      const response = await fetch(apiPath('/api/register'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: name,
+          phoneNumber: ph,
+        }),
+      })
 
-      const { data: existing } = await supabase
-        .from('users')
-        .select('id')
-        .eq('phone_number', ph)
-        .maybeSingle()
-
-      if (existing) {
-        userId = existing.id
-      } else {
-        const { data: inserted, error: insertErr } = await supabase
-          .from('users')
-          .insert({ full_name: name, phone_number: ph, phone_last4: last4 })
-          .select('id')
-          .single()
-
-        if (insertErr || !inserted) {
-          console.error('[Nearby][Save] Register insert failed:', insertErr)
-          throw new Error('REGISTER_INSERT_FAILED')
-        }
-        userId = inserted.id
+      const result = await response.json()
+      if (!response.ok || !result?.ok || !result?.userId) {
+        console.error('[Nearby][Save] Register API failed:', result)
+        setError(result?.message ?? 'We could not save your changes. Please try again.')
+        return
       }
 
       // Persist registration info so create-group can use it
-      localStorage.setItem('nearby_register', JSON.stringify({ userId, userName: name, phone4: last4, phone: ph }))
+      localStorage.setItem('nearby_register', JSON.stringify({
+        userId: result.userId,
+        userName: result.fullName ?? name,
+        phone4: result.phoneLast4 ?? last4,
+        phone: result.phoneNumber ?? ph,
+      }))
       setDone(true)
     } catch (err) {
       console.error('[Nearby][Save] Register failed:', err)
