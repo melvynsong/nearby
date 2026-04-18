@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
+import GroupInviteActions from '@/components/GroupInviteActions'
 
 type Friend = {
   id: string   // local key only
@@ -28,6 +29,8 @@ export default function CreateGroup() {
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
   const [gated, setGated] = useState(false)
+  const [createdGroupName, setCreatedGroupName] = useState('')
+  const [createdGroupPasscode, setCreatedGroupPasscode] = useState('')
 
   useEffect(() => {
     const loadSession = () => {
@@ -105,6 +108,8 @@ export default function CreateGroup() {
         localStorage.setItem('nearby_session', JSON.stringify({ ...current, allGroups: nextGroups }))
       }
 
+      setCreatedGroupName(result.groupName)
+      setCreatedGroupPasscode(passcode.trim())
       setDone(true)
     } catch (err) {
       console.error('[Nearby][Save] Group creation failed:', err)
@@ -145,6 +150,12 @@ export default function CreateGroup() {
           <p className="mt-2 text-sm text-neutral-500">
             Your circle is ready. Start saving food spots together.
           </p>
+          <div className="mt-5 text-left">
+            <GroupInviteActions
+              groupName={createdGroupName || groupName || 'Your Group'}
+              groupPasscode={createdGroupPasscode || passcode}
+            />
+          </div>
           <button
             onClick={() => router.push('/nearby')}
             className="mt-6 w-full rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-3 text-sm font-semibold text-white transition-colors"

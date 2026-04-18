@@ -36,6 +36,16 @@ export default function Home() {
     router.push('/register')
   }
 
+  const handleJoinGroupCta = () => {
+    const session = localStorage.getItem('nearby_session')
+    if (session) {
+      router.push('/join-group')
+      return
+    }
+    localStorage.setItem('nearby_after_auth', 'join-group')
+    router.push('/register')
+  }
+
   const handleEnter = async () => {
     setError('')
     setShowLoginErrorCard(false)
@@ -141,6 +151,12 @@ export default function Home() {
         return
       }
 
+      if (nextAction === 'join-group') {
+        localStorage.removeItem('nearby_after_auth')
+        router.push('/join-group')
+        return
+      }
+
       router.push('/nearby')
     } catch (err) {
       console.error('[Nearby][API] Login failed:', err)
@@ -176,6 +192,12 @@ export default function Home() {
             Add a Place
           </button>
         </div>
+        <button
+          onClick={handleJoinGroupCta}
+          className="mt-3 text-sm font-medium text-teal-700 hover:underline"
+        >
+          Have a passcode? Join Group
+        </button>
       </section>
 
       <div className="w-full max-w-sm rounded-2xl bg-white border border-neutral-200 p-7 shadow-sm">

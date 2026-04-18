@@ -395,6 +395,15 @@ export default function NearbyHome() {
                 >
                   + Create new group
                 </button>
+                <button
+                  onClick={() => {
+                    setShowGroupMenu(false)
+                    router.push('/join-group')
+                  }}
+                  className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 transition-colors"
+                >
+                  + Join group with passcode
+                </button>
               </div>
             </div>
           )}

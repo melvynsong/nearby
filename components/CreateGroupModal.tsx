@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import GroupInviteActions from '@/components/GroupInviteActions'
 
 type Friend = {
   id: string
@@ -35,6 +36,8 @@ export default function CreateGroupModal({
   const [friends, setFriends] = useState<Friend[]>([{ id: '1', name: '', phone: '' }])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [createdEntry, setCreatedEntry] = useState<GroupEntry | null>(null)
+  const [createdPasscode, setCreatedPasscode] = useState('')
 
   if (!isOpen) return null
 
@@ -56,6 +59,8 @@ export default function CreateGroupModal({
     setFriends([{ id: '1', name: '', phone: '' }])
     setError('')
     setLoading(false)
+    setCreatedEntry(null)
+    setCreatedPasscode('')
   }
 
   const close = () => {
@@ -101,14 +106,16 @@ export default function CreateGroupModal({
         return
       }
 
-      onGroupCreated({
+      const entry = {
         memberId: result.memberId,
         memberName: result.memberName,
         groupId: result.groupId,
         groupName: result.groupName,
-      })
+      }
 
-      close()
+      onGroupCreated(entry)
+      setCreatedEntry(entry)
+      setCreatedPasscode(accessCode)
     } catch (err) {
       console.error('[Nearby][Save] Modal group creation failed:', err)
       setError('We could not save your changes. Please try again.')
@@ -132,6 +139,22 @@ export default function CreateGroupModal({
         </div>
 
         <div className="mt-4 space-y-4">
+          {createdEntry ? (
+            <>
+              <div className="rounded-2xl border border-teal-100 bg-teal-50 p-3 text-center">
+                <p className="text-sm font-semibold text-teal-800">Group created successfully</p>
+                <p className="mt-1 text-xs text-teal-700">Share your invite now.</p>
+              </div>
+              <GroupInviteActions groupName={createdEntry.groupName} groupPasscode={createdPasscode} />
+              <button
+                onClick={close}
+                className="w-full rounded-xl bg-teal-700 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-teal-800"
+              >
+                Done
+              </button>
+            </>
+          ) : (
+            <>
           <div>
             <label className="mb-1.5 block text-xs font-medium text-neutral-700">Group name</label>
             <input
@@ -200,6 +223,8 @@ export default function CreateGroupModal({
           >
             {loading ? 'Creating group...' : 'Create group'}
           </button>
+            </>
+          )}
         </div>
       </div>
     </div>
