@@ -13,9 +13,17 @@ type SessionData = {
   allGroups?: Array<{ memberId: string; memberName: string; groupId: string; groupName: string }>
 }
 
+type RegisterData = {
+  userId: string
+  userName: string
+  phone4: string
+  phone: string
+}
+
 export default function JoinGroupPage() {
   const router = useRouter()
   const [session, setSession] = useState<SessionData | null>(null)
+  const [register, setRegister] = useState<RegisterData | null>(null)
   const [passcode, setPasscode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -23,12 +31,23 @@ export default function JoinGroupPage() {
 
   useEffect(() => {
     const raw = localStorage.getItem('nearby_session')
-    if (!raw) {
-      localStorage.setItem('nearby_after_auth', 'join-group')
-      setGated(true)
+    if (raw) {
+      setSession(JSON.parse(raw) as SessionData)
       return
     }
-    setSession(JSON.parse(raw) as SessionData)
+
+    const rawRegister = localStorage.getItem('nearby_register')
+    if (rawRegister) {
+      try {
+        setRegister(JSON.parse(rawRegister) as RegisterData)
+        return
+      } catch {
+        setRegister(null)
+      }
+    }
+
+    localStorage.setItem('nearby_after_auth', 'join-group')
+    setGated(true)
   }, [])
 
   const handleJoin = async () => {
@@ -40,7 +59,7 @@ export default function JoinGroupPage() {
       return
     }
 
-    if (!session) {
+    if (!session && !register) {
       setError('Please create an account or sign in before joining a group.')
       return
     }
@@ -51,7 +70,8 @@ export default function JoinGroupPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sessionMemberId: session.memberId,
+          sessionMemberId: session?.memberId,
+          requesterUserId: register?.userId,
           groupPasscode: code,
         }),
       })
@@ -63,7 +83,7 @@ export default function JoinGroupPage() {
         return
       }
 
-      const allGroups = Array.isArray(session.allGroups) ? session.allGroups : []
+      const allGroups = Array.isArray(session?.allGroups) ? session!.allGroups : []
       const hasGroup = allGroups.some((g) => g.groupId === result.groupId)
       const nextGroups = hasGroup
         ? allGroups
@@ -75,7 +95,7 @@ export default function JoinGroupPage() {
           }]
 
       localStorage.setItem('nearby_session', JSON.stringify({
-        ...session,
+        ...(session ?? {}),
         memberId: result.memberId,
         memberName: result.memberName,
         groupId: result.groupId,
@@ -133,7 +153,7 @@ export default function JoinGroupPage() {
               type="text"
               value={passcode}
               onChange={(e) => setPasscode(e.target.value)}
-              placeholder="Enter group passcode"
+              placeholder="9999"
               className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
             />
             <p className="mt-2 text-xs text-neutral-500">

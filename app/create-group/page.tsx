@@ -19,9 +19,17 @@ type SessionData = {
   groupName: string
 }
 
+type RegisterData = {
+  userId: string
+  userName: string
+  phone4: string
+  phone: string
+}
+
 export default function CreateGroup() {
   const router = useRouter()
   const [session, setSession] = useState<SessionData | null>(null)
+  const [register, setRegister] = useState<RegisterData | null>(null)
   const [groupName, setGroupName] = useState('')
   const [passcode, setPasscode] = useState('')
   const [friends, setFriends] = useState<Friend[]>([{ id: '1', name: '', phone: '' }])
@@ -35,13 +43,23 @@ export default function CreateGroup() {
   useEffect(() => {
     const loadSession = () => {
       const rawSession = localStorage.getItem('nearby_session')
-      if (!rawSession) {
-        localStorage.setItem('nearby_after_auth', 'create-group')
-        setGated(true)
-        return
+      if (rawSession) {
+        setSession(JSON.parse(rawSession) as SessionData)
       }
 
-      setSession(JSON.parse(rawSession) as SessionData)
+      const rawRegister = localStorage.getItem('nearby_register')
+      if (rawRegister) {
+        try {
+          setRegister(JSON.parse(rawRegister) as RegisterData)
+        } catch {
+          setRegister(null)
+        }
+      }
+
+      if (!rawSession && !rawRegister) {
+        localStorage.setItem('nearby_after_auth', 'create-group')
+        setGated(true)
+      }
     }
 
     loadSession()
@@ -64,7 +82,7 @@ export default function CreateGroup() {
     const name = groupName.trim()
     if (!name) { setError('Please enter a group name.'); return }
     if (!passcode.trim()) { setError('Please set a group passcode.'); return }
-    if (!session) {
+    if (!session && !register) {
       setError('Please create an account or sign in before creating a group.')
       return
     }
@@ -75,8 +93,9 @@ export default function CreateGroup() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sessionMemberId: session.memberId,
-          fallbackMemberName: session.memberName,
+          sessionMemberId: session?.memberId,
+          requesterUserId: register?.userId,
+          fallbackMemberName: session?.memberName ?? register?.userName ?? 'Member',
           groupName: name,
           passcode: passcode.trim(),
           friends,

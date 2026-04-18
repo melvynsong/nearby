@@ -14,6 +14,13 @@ type Session = {
   groupName: string
 }
 
+type RegisterData = {
+  userId: string
+  userName: string
+  phone4: string
+  phone: string
+}
+
 type UserProfile = {
   userId: string
   fullName: string
@@ -75,68 +82,100 @@ export default function SettingsPage() {
       setLoadError(false)
       setLoading(true)
 
-      const raw = localStorage.getItem('nearby_session')
-      if (!raw) {
+      const rawSession = localStorage.getItem('nearby_session')
+      const rawRegister = localStorage.getItem('nearby_register')
+
+      if (!rawSession && !rawRegister) {
         router.replace('/')
         return
       }
 
-      const parsed = JSON.parse(raw) as Session
-      setSession(parsed)
+      let userId = ''
+      let profileSource: { full_name?: string; phone_number?: string; personal_passcode?: string | null } | null = null
 
-      const { data: member, error: memberError } = await supabase
-        .from('members')
-        .select('user_id, users ( full_name, phone_number, personal_passcode )')
-        .eq('id', parsed.memberId)
-        .maybeSingle()
+      if (rawSession) {
+        const parsed = JSON.parse(rawSession) as Session
+        setSession(parsed)
 
-      if (memberError || !member?.user_id) {
-        console.error('[Nearby][Settings] Failed to load member info:', memberError)
-        throw new Error('SETTINGS_MEMBER_LOAD_FAILED')
+        const { data: member, error: memberError } = await supabase
+          .from('members')
+          .select('user_id, users ( full_name, phone_number, personal_passcode )')
+          .eq('id', parsed.memberId)
+          .maybeSingle()
+
+        if (memberError || !member?.user_id) {
+          console.error('[Nearby][Settings] Failed to load member info:', memberError)
+          throw new Error('SETTINGS_MEMBER_LOAD_FAILED')
+        }
+
+        userId = member.user_id as string
+        profileSource = member.users as { full_name?: string; phone_number?: string; personal_passcode?: string | null } | null
+      } else if (rawRegister) {
+        const reg = JSON.parse(rawRegister) as RegisterData
+        userId = reg.userId
+
+        if (!userId) {
+          throw new Error('SETTINGS_USER_ID_MISSING')
+        }
+
+        const { data: userOnly, error: userOnlyError } = await supabase
+          .from('users')
+          .select('id, full_name, phone_number, personal_passcode')
+          .eq('id', userId)
+          .maybeSingle()
+
+        if (userOnlyError || !userOnly?.id) {
+          console.error('[Nearby][Settings] Failed to load account profile:', userOnlyError)
+          throw new Error('SETTINGS_ACCOUNT_LOAD_FAILED')
+        }
+
+        profileSource = {
+          full_name: userOnly.full_name ?? reg.userName,
+          phone_number: userOnly.phone_number ?? reg.phone,
+          personal_passcode: userOnly.personal_passcode,
+        }
       }
 
-      const user = member.users as {
-        full_name?: string
-        phone_number?: string
-        personal_passcode?: string | null
-      } | null
-
-      const userId = member.user_id as string
       setProfile({
         userId,
-        fullName: user?.full_name ?? parsed.memberName,
-        phoneNumber: user?.phone_number ?? '',
-        personalPasscode: user?.personal_passcode ?? '',
+        fullName: profileSource?.full_name ?? 'Member',
+        phoneNumber: profileSource?.phone_number ?? '',
+        personalPasscode: profileSource?.personal_passcode ?? '',
       })
 
-      const { data: group, error: groupError } = await supabase
-        .from('groups')
-        .select('created_by_user_id')
-        .eq('id', parsed.groupId)
-        .maybeSingle()
+      if (rawSession) {
+        const parsed = JSON.parse(rawSession) as Session
+        const { data: group, error: groupError } = await supabase
+          .from('groups')
+          .select('created_by_user_id')
+          .eq('id', parsed.groupId)
+          .maybeSingle()
 
-      if (groupError?.message?.includes('created_by_user_id')) {
-        // Backward compatibility: if migration not applied yet, keep settings usable.
-        console.warn('[Nearby][Settings] groups.created_by_user_id missing. Falling back to non-creator mode.')
+        if (groupError?.message?.includes('created_by_user_id')) {
+          // Backward compatibility: if migration not applied yet, keep settings usable.
+          console.warn('[Nearby][Settings] groups.created_by_user_id missing. Falling back to non-creator mode.')
+          setIsGroupCreator(false)
+          return
+        }
+
+        if (groupError) {
+          console.error('[Nearby][Settings] Failed to load group ownership:', groupError)
+          // Do not block the whole settings screen when ownership lookup fails.
+          setIsGroupCreator(false)
+          return
+        }
+
+        const creatorId = (group as { created_by_user_id?: string | null } | null)?.created_by_user_id ?? null
+        const creator = Boolean(creatorId && creatorId === userId)
+        setIsGroupCreator(creator)
+        if (creator) {
+          await loadInviteDetails(parsed.groupId, userId)
+        }
+      } else {
         setIsGroupCreator(false)
-        return
-      }
-
-      if (groupError) {
-        console.error('[Nearby][Settings] Failed to load group ownership:', groupError)
-        // Do not block the whole settings screen when ownership lookup fails.
-        setIsGroupCreator(false)
-        return
-      }
-
-      const creatorId = (group as { created_by_user_id?: string | null } | null)?.created_by_user_id ?? null
-      const creator = Boolean(creatorId && creatorId === userId)
-      setIsGroupCreator(creator)
-      if (creator) {
-        await loadInviteDetails(parsed.groupId, userId)
       }
     } catch (error) {
-      console.error('[Nearby][Settings] Load failed:', error)
+      console.error('[Nearby][Settings] Failed to load:', error)
       setLoadError(true)
     } finally {
       setLoading(false)

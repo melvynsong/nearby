@@ -13,6 +13,13 @@ type GroupEntry = {
   groupName: string
 }
 
+type RegisterData = {
+  userId: string
+  userName: string
+  phone4: string
+  phone: string
+}
+
 export default function Home() {
   const router = useRouter()
   const [last4, setLast4] = useState('')
@@ -20,15 +27,29 @@ export default function Home() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showLoginErrorCard, setShowLoginErrorCard] = useState(false)
+  const [registerAccount, setRegisterAccount] = useState<RegisterData | null>(null)
 
   useEffect(() => {
     const session = localStorage.getItem('nearby_session')
-    if (session) router.replace('/nearby')
+    if (session) {
+      router.replace('/nearby')
+      return
+    }
+
+    const rawRegister = localStorage.getItem('nearby_register')
+    if (rawRegister) {
+      try {
+        setRegisterAccount(JSON.parse(rawRegister) as RegisterData)
+      } catch {
+        setRegisterAccount(null)
+      }
+    }
   }, [router])
 
   const handleCreateGroupCta = () => {
     const session = localStorage.getItem('nearby_session')
-    if (session) {
+    const register = localStorage.getItem('nearby_register')
+    if (session || register) {
       router.push('/create-group')
       return
     }
@@ -38,7 +59,8 @@ export default function Home() {
 
   const handleJoinGroupCta = () => {
     const session = localStorage.getItem('nearby_session')
-    if (session) {
+    const register = localStorage.getItem('nearby_register')
+    if (session || register) {
       router.push('/join-group')
       return
     }
@@ -69,6 +91,30 @@ export default function Home() {
         .eq('phone_last4', last4)
 
       if (!members || members.length === 0) {
+        const { data: userOnly } = await supabase
+          .from('users')
+          .select('id, full_name, phone_number, phone_last4, personal_passcode')
+          .eq('phone_last4', last4)
+          .eq('personal_passcode', passcode.trim())
+          .maybeSingle()
+
+        if (userOnly?.id) {
+          localStorage.setItem('nearby_register', JSON.stringify({
+            userId: userOnly.id,
+            userName: userOnly.full_name ?? 'Member',
+            phone4: userOnly.phone_last4 ?? last4,
+            phone: userOnly.phone_number ?? '',
+          }))
+          setRegisterAccount({
+            userId: userOnly.id,
+            userName: userOnly.full_name ?? 'Member',
+            phone4: userOnly.phone_last4 ?? last4,
+            phone: userOnly.phone_number ?? '',
+          })
+          setLoading(false)
+          return
+        }
+
         setError('Incorrect details.')
         setLoading(false)
         return
@@ -143,6 +189,12 @@ export default function Home() {
         groupName: matched.groupName,
         allGroups,
       }))
+      localStorage.setItem('nearby_register', JSON.stringify({
+        userId: matched.userId,
+        userName: matched.memberName,
+        phone4: last4,
+        phone: '',
+      }))
 
       const nextAction = localStorage.getItem('nearby_after_auth')
       if (nextAction === 'create-group') {
@@ -198,8 +250,14 @@ export default function Home() {
         >
           Have a passcode? Join Group
         </button>
+        {registerAccount && (
+          <p className="mt-3 text-xs text-neutral-500">
+            Signed in as {registerAccount.userName}. You do not have a group yet.
+          </p>
+        )}
       </section>
 
+      {!registerAccount && (
       <div className="w-full max-w-sm rounded-2xl bg-white border border-neutral-200 p-7 shadow-sm">
         <div className="space-y-5">
           <div>
@@ -212,7 +270,7 @@ export default function Home() {
               maxLength={4}
               value={last4}
               onChange={(e) => setLast4(e.target.value.replace(/\D/g, ''))}
-              placeholder="e.g. 1234"
+              placeholder="5432"
               className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
             />
           </div>
@@ -225,7 +283,7 @@ export default function Home() {
               type="password"
               value={passcode}
               onChange={(e) => setPasscode(e.target.value)}
-              placeholder="Enter passcode"
+              placeholder="9999"
               className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
             />
             <p className="mt-1.5 text-xs text-neutral-400">
@@ -259,6 +317,7 @@ export default function Home() {
           </p>
         </div>
       </div>
+      )}
       </div>
     </main>
   )

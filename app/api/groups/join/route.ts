@@ -9,9 +9,10 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const sessionMemberId = typeof body?.sessionMemberId === 'string' ? body.sessionMemberId : ''
+    const requesterUserId = typeof body?.requesterUserId === 'string' ? body.requesterUserId : ''
     const groupPasscode = typeof body?.groupPasscode === 'string' ? body.groupPasscode.trim() : ''
 
-    if (!sessionMemberId) {
+    if (!sessionMemberId && !requesterUserId) {
       return NextResponse.json(
         { ok: false, message: 'Please create an account or sign in before joining a group.' },
         { status: 401 },
@@ -27,18 +28,62 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServerSupabaseClient()
 
-    const creator = await supabase
-      .from('members')
-      .select('id, user_id, display_name, phone_last4, users ( phone_number )')
-      .eq('id', sessionMemberId)
-      .maybeSingle()
+    let userId = ''
+    let displayName = 'Member'
+    let phone4 = ''
 
-    if (creator.error || !creator.data?.user_id) {
-      console.error('[Nearby][API][GroupJoin] Session validation failed:', creator.error)
-      return NextResponse.json(
-        { ok: false, message: 'Please create an account or sign in before joining a group.' },
-        { status: 401 },
-      )
+    if (sessionMemberId) {
+      const creator = await supabase
+        .from('members')
+        .select('id, user_id, display_name, phone_last4, users ( phone_number, personal_passcode )')
+        .eq('id', sessionMemberId)
+        .maybeSingle()
+
+      if (creator.error || !creator.data?.user_id) {
+        console.error('[Nearby][API][GroupJoin] Session validation failed:', creator.error)
+        return NextResponse.json(
+          { ok: false, message: 'Please create an account or sign in before joining a group.' },
+          { status: 401 },
+        )
+      }
+
+      const personalPasscode = (creator.data.users as { personal_passcode?: string | null } | null)?.personal_passcode
+      if (!personalPasscode) {
+        return NextResponse.json(
+          { ok: false, message: 'Please set your own passcode before joining a group.' },
+          { status: 400 },
+        )
+      }
+
+      userId = creator.data.user_id as string
+      displayName = (creator.data.display_name as string | null) ?? 'Member'
+      const phone = (creator.data.users as { phone_number?: string } | null)?.phone_number ?? ''
+      phone4 = (creator.data.phone_last4 as string | null) ?? phoneLast4(phone)
+    } else {
+      const user = await supabase
+        .from('users')
+        .select('id, full_name, phone_number, phone_last4, personal_passcode')
+        .eq('id', requesterUserId)
+        .maybeSingle()
+
+      if (user.error || !user.data?.id) {
+        console.error('[Nearby][API][GroupJoin] Account validation failed:', user.error)
+        return NextResponse.json(
+          { ok: false, message: 'Please create an account or sign in before joining a group.' },
+          { status: 401 },
+        )
+      }
+
+      if (!user.data.personal_passcode) {
+        return NextResponse.json(
+          { ok: false, message: 'Please set your own passcode before joining a group.' },
+          { status: 400 },
+        )
+      }
+
+      userId = user.data.id
+      displayName = user.data.full_name ?? 'Member'
+      phone4 = user.data.phone_last4 ?? phoneLast4(user.data.phone_number ?? '')
     }
 
     const groupsResult = await supabase
@@ -62,11 +107,6 @@ export async function POST(request: NextRequest) {
         { status: 404 },
       )
     }
-
-    const userId = creator.data.user_id as string
-    const displayName = (creator.data.display_name as string | null) ?? 'Member'
-    const phone = (creator.data.users as { phone_number?: string } | null)?.phone_number ?? ''
-    const phone4 = (creator.data.phone_last4 as string | null) ?? phoneLast4(phone)
 
     if (!phone4) {
       return NextResponse.json(

@@ -13,12 +13,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
 
     const sessionMemberId = typeof body?.sessionMemberId === 'string' ? body.sessionMemberId : ''
+    const requesterUserId = typeof body?.requesterUserId === 'string' ? body.requesterUserId : ''
     const fallbackMemberName = typeof body?.fallbackMemberName === 'string' ? body.fallbackMemberName : ''
     const groupName = typeof body?.groupName === 'string' ? body.groupName.trim() : ''
     const passcode = typeof body?.passcode === 'string' ? body.passcode.trim() : ''
     const friends = Array.isArray(body?.friends) ? (body.friends as FriendInput[]) : []
 
-    if (!sessionMemberId) {
+    if (!sessionMemberId && !requesterUserId) {
       return NextResponse.json(
         { ok: false, message: 'Please create an account or sign in before creating a group.' },
         { status: 401 },
@@ -34,24 +35,63 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServerSupabaseClient()
 
-    const { data: creatorMember, error: creatorError } = await supabase
-      .from('members')
-      .select('id, user_id, display_name, phone_last4, users ( phone_number )')
-      .eq('id', sessionMemberId)
-      .maybeSingle()
+    let creatorUserId = ''
+    let creatorName = fallbackMemberName
+    let creatorPhone4 = ''
 
-    if (creatorError || !creatorMember?.user_id) {
-      console.error('[Nearby][API][GroupCreate] Session validation failed:', creatorError)
-      return NextResponse.json(
-        { ok: false, message: 'Please create an account or sign in before creating a group.' },
-        { status: 401 },
-      )
+    if (sessionMemberId) {
+      const { data: creatorMember, error: creatorError } = await supabase
+        .from('members')
+        .select('id, user_id, display_name, phone_last4, users ( phone_number, personal_passcode )')
+        .eq('id', sessionMemberId)
+        .maybeSingle()
+
+      if (creatorError || !creatorMember?.user_id) {
+        console.error('[Nearby][API][GroupCreate] Session validation failed:', creatorError)
+        return NextResponse.json(
+          { ok: false, message: 'Please create an account or sign in before creating a group.' },
+          { status: 401 },
+        )
+      }
+
+      const personalPasscode = (creatorMember.users as { personal_passcode?: string | null } | null)?.personal_passcode
+      if (!personalPasscode) {
+        return NextResponse.json(
+          { ok: false, message: 'Please set your own passcode before creating a group.' },
+          { status: 400 },
+        )
+      }
+
+      creatorUserId = creatorMember.user_id as string
+      creatorName = (creatorMember.display_name as string | null) ?? fallbackMemberName
+      const creatorPhone = (creatorMember.users as { phone_number?: string } | null)?.phone_number ?? ''
+      creatorPhone4 = (creatorMember.phone_last4 as string | null) ?? phoneLast4(creatorPhone)
+    } else {
+      const { data: creatorUser, error: userError } = await supabase
+        .from('users')
+        .select('id, full_name, phone_number, phone_last4, personal_passcode')
+        .eq('id', requesterUserId)
+        .maybeSingle()
+
+      if (userError || !creatorUser?.id) {
+        console.error('[Nearby][API][GroupCreate] Account validation failed:', userError)
+        return NextResponse.json(
+          { ok: false, message: 'Please create an account or sign in before creating a group.' },
+          { status: 401 },
+        )
+      }
+
+      if (!creatorUser.personal_passcode) {
+        return NextResponse.json(
+          { ok: false, message: 'Please set your own passcode before creating a group.' },
+          { status: 400 },
+        )
+      }
+
+      creatorUserId = creatorUser.id
+      creatorName = creatorUser.full_name ?? fallbackMemberName
+      creatorPhone4 = creatorUser.phone_last4 ?? phoneLast4(creatorUser.phone_number ?? '')
     }
-
-    const creatorUserId = creatorMember.user_id as string
-    const creatorName = (creatorMember.display_name as string | null) ?? fallbackMemberName
-    const creatorPhone = (creatorMember.users as { phone_number?: string } | null)?.phone_number ?? ''
-    const creatorPhone4 = (creatorMember.phone_last4 as string | null) ?? phoneLast4(creatorPhone)
 
     if (!creatorPhone4) {
       console.error('[Nearby][API][GroupCreate] Missing creator phone details')

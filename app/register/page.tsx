@@ -22,8 +22,9 @@ export default function Register() {
     const code = personalPasscode.trim()
 
     if (!name) { setError('Please enter your name.'); return }
-    if (ph.replace(/\D/g, '').length < 8) { setError('Please enter a valid phone number.'); return }
-    if (code && code.length < 4) { setError('Personal passcode must be at least 4 characters.'); return }
+    if (ph.replace(/\D/g, '').length < 8) { setError('Please enter a valid telephone number.'); return }
+    if (!code) { setError('Please set your own passcode before continuing.'); return }
+    if (code.length < 4) { setError('Passcode must be at least 4 characters.'); return }
 
     const last4 = phoneLast4(ph)
     setSaving(true)
@@ -81,20 +82,12 @@ export default function Register() {
             <span className="text-2xl">✓</span>
           </div>
           <p className="text-xl font-bold text-neutral-900">You&apos;re in!</p>
-          <p className="mt-2 text-sm text-neutral-500">
-            Account created. Next, sign in to continue.
-          </p>
+          <p className="mt-2 text-sm text-neutral-500">Account created. You can now create or join a group.</p>
           <button
             onClick={() => router.push('/')}
             className="mt-6 w-full rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-3 text-sm font-semibold text-white transition-colors"
           >
-            Go to sign in
-          </button>
-          <button
-            onClick={() => router.push('/')}
-            className="mt-3 w-full rounded-xl border border-neutral-200 hover:bg-neutral-50 px-4 py-3 text-sm font-medium text-neutral-600 transition-colors"
-          >
-            Go to login
+            Continue
           </button>
         </div>
         </div>
@@ -121,24 +114,24 @@ export default function Register() {
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="e.g. Melvyn Song"
+              placeholder="Joe Doe"
               className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1.5">
-              Personal passcode <span className="font-normal text-neutral-400">(optional)</span>
+              Personal passcode
             </label>
             <input
               type="password"
               value={personalPasscode}
               onChange={(e) => setPersonalPasscode(e.target.value)}
-              placeholder="Use this for quick return access"
+              placeholder="9999"
               className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
             />
             <p className="mt-1.5 text-xs text-neutral-400">
-              You can still join using your group&apos;s passcode.
+              This is your own account passcode and is required before joining groups.
             </p>
           </div>
 
@@ -150,7 +143,7 @@ export default function Register() {
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="e.g. +65 9123 4567"
+              placeholder="98765432"
               className="w-full rounded-xl border border-neutral-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 transition"
             />
             <p className="mt-1.5 text-xs text-neutral-400">
