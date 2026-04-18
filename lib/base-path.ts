@@ -1,4 +1,4 @@
-const rawBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? ''
+const rawBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '/nearby'
 
 function normalizeBasePath(input: string): string {
   const trimmed = input.trim()

@@ -18,13 +18,21 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## Subpath Deployment
 
-To run Nearby under a subpath (for example `/nearby` behind a proxy), set:
+Nearby defaults to mounting under `/nearby`.
+
+To override the base path (for root deployment or another subpath), set:
 
 ```bash
 NEXT_PUBLIC_BASE_PATH=/nearby
 ```
 
-Then rebuild and redeploy. Leave this empty for root deployment.
+Optional: if your proxy does not reliably forward `/_next` assets, set an explicit asset prefix:
+
+```bash
+NEXT_PUBLIC_ASSET_PREFIX=https://nearby-nine.vercel.app
+```
+
+Then rebuild and redeploy.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
