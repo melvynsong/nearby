@@ -1,28 +1,28 @@
 import type { NextRequest } from 'next/server'
 
-function extractLabel(results: any[]): string {
-  // Use the first result's address_components — it's the most specific match
-  const components: any[] = results[0]?.address_components ?? []
+// Walk ALL results looking for the most specific area name, not just results[0]
+function extractLabel(results: any[]): string | null {
+  const find = (components: any[], types: string[]) =>
+    components.find((c: any) => types.some((t) => c.types.includes(t)))
 
-  const find = (types: string[]) =>
-    components.find((c) => types.some((t) => c.types.includes(t)))
+  for (const result of results) {
+    const components: any[] = result.address_components ?? []
+    const label =
+      find(components, ['sublocality_level_1'])?.long_name ||
+      find(components, ['neighborhood'])?.long_name ||
+      find(components, ['locality'])?.long_name
+    if (label) {
+      console.log('[reverse] resolved label:', label, 'from result type:', result.types?.[0])
+      return label
+    }
+  }
 
-  const label =
-    find(['sublocality_level_1'])?.long_name ||
-    find(['neighborhood'])?.long_name ||
-    find(['locality'])?.long_name ||
-    shortenAddress(results[0]?.formatted_address)
-
-  return label ?? 'your location'
-}
-
-// Strip postal codes and trim to the first 2–3 meaningful words
-function shortenAddress(address: string | undefined): string | null {
-  if (!address) return null
-  return address
-    .replace(/\b\d{5,}\b/g, '')   // remove postal codes
-    .replace(/,.*$/, '')           // keep only the first segment before a comma
-    .trim()
+  // Last resort: strip postal code from first result's formatted address
+  const fallback = results[0]?.formatted_address
+  if (!fallback) return null
+  const shortened = fallback.replace(/\b\d{5,}\b/g, '').replace(/,.*$/, '').trim()
+  console.log('[reverse] using shortened address fallback:', shortened)
+  return shortened || null
 }
 
 export async function POST(request: NextRequest) {
@@ -36,30 +36,42 @@ export async function POST(request: NextRequest) {
     const apiKey = process.env.GOOGLE_PLACES_SERVER_KEY
     if (!apiKey) {
       console.error('[reverse] GOOGLE_PLACES_SERVER_KEY is not set')
-      return Response.json({ error: 'Server configuration error' }, { status: 500 })
+      return Response.json({ locationLabel: null, error: 'Server configuration error' }, { status: 500 })
     }
+
+    console.log('[reverse] geocoding start, coords:', Math.round(lat * 100) / 100, Math.round(lng * 100) / 100)
 
     const url = new URL('https://maps.googleapis.com/maps/api/geocode/json')
     url.searchParams.set('latlng', `${lat},${lng}`)
     url.searchParams.set('key', apiKey)
 
-    const res = await fetch(url.toString())
+    let res: Response
+    try {
+      // Hard 6s timeout so VPN-blocked requests don't hang Vercel's serverless function
+      res = await fetch(url.toString(), { signal: AbortSignal.timeout(6000) })
+    } catch (fetchErr: any) {
+      const reason = fetchErr?.name === 'TimeoutError' ? 'timeout' : fetchErr?.message
+      console.error('[reverse] geocoding fetch failed:', reason)
+      return Response.json({ locationLabel: null })
+    }
+
     if (!res.ok) {
       console.error('[reverse] Geocoding API HTTP error:', res.status)
-      return Response.json({ error: 'Geocoding request failed' }, { status: 502 })
+      return Response.json({ locationLabel: null })
     }
 
     const data = await res.json()
 
     if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-      console.error('[reverse] Geocoding API status:', data.status, data.error_message)
-      return Response.json({ error: `Geocoding error: ${data.status}` }, { status: 502 })
+      console.error('[reverse] Geocoding API status:', data.status, data.error_message ?? '')
+      return Response.json({ locationLabel: null })
     }
 
     const locationLabel = extractLabel(data.results ?? [])
+    console.log('[reverse] final locationLabel:', locationLabel)
     return Response.json({ locationLabel })
   } catch (err) {
     console.error('[reverse] unexpected error:', err)
-    return Response.json({ error: 'Internal server error' }, { status: 500 })
+    return Response.json({ locationLabel: null })
   }
 }

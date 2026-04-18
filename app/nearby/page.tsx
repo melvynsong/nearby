@@ -36,6 +36,13 @@ type GalleryState = {
   index: number
 } | null
 
+// idle    → permission prompt not yet shown (show CTA)
+// locating → getCurrentPosition in flight
+// resolved → coords + optional area name available
+// fallback → geolocation unavailable/timed out (not user-denied)
+// denied  → user explicitly denied permission
+type LocationStatus = 'idle' | 'locating' | 'resolved' | 'fallback' | 'denied'
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getInitials(name: string): string {
@@ -81,111 +88,156 @@ export default function NearbyHome() {
   const router = useRouter()
   const [session, setSession] = useState<Session | null>(null)
   const [places, setPlaces] = useState<PlaceCard[]>([])
-  const [loading, setLoading] = useState(true)
+  const [placesLoading, setPlacesLoading] = useState(true)
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null)
-  const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied'>('idle')
-  const [locationLabel, setLocationLabel] = useState<string | null>(null)
+  const [locationStatus, setLocationStatus] = useState<LocationStatus>('idle')
+  const [areaName, setAreaName] = useState<string | null>(null)
   const [gallery, setGallery] = useState<GalleryState>(null)
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set())
 
-  // ── Geolocation + reverse geocode ───────────────────────────────────────────
+  // ── Places fetch — always runs independently of location ──────────────────────
+  const fetchPlaces = useCallback(async (groupId: string) => {
+    console.log('[Places] fetch start, groupId:', groupId)
+    setPlacesLoading(true)
+
+    // Hard 12s timeout so a hung Supabase connection never blocks the UI
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      console.warn('[Places] fetch timed out after 12s')
+      controller.abort()
+    }, 12000)
+
+    try {
+      const { data, error } = await supabase
+        .from('recommendations')
+        .select(`
+          note,
+          created_at,
+          place_id,
+          places ( name, formatted_address, lat, lng, photo_urls ),
+          members ( display_name )
+        `)
+        .eq('group_id', groupId)
+        .order('created_at', { ascending: false })
+        .abortSignal(controller.signal)
+
+      if (error) {
+        console.error('[Places] fetch error:', error.message)
+        return
+      }
+
+      console.log('[Places] fetch success, rows:', data?.length ?? 0)
+
+      const map = new Map<string, PlaceCard>()
+      for (const r of (data ?? []) as any[]) {
+        const pid: string = r.place_id
+        if (!map.has(pid)) {
+          map.set(pid, {
+            place_id: pid,
+            name: r.places?.name ?? 'Unknown place',
+            formatted_address: r.places?.formatted_address ?? null,
+            lat: r.places?.lat ?? null,
+            lng: r.places?.lng ?? null,
+            photo_urls: r.places?.photo_urls ?? [],
+            recommendations: [],
+            newest_at: r.created_at,
+            distanceKm: null,
+          })
+        }
+        map.get(pid)!.recommendations.push({
+          note: r.note,
+          member_name: r.members?.display_name ?? '??',
+          created_at: r.created_at,
+        })
+      }
+
+      setPlaces([...map.values()])
+    } finally {
+      clearTimeout(timer)
+      setPlacesLoading(false)
+    }
+  }, [])
+
+  // ── Reverse geocode — best-effort, never blocks anything ─────────────────────
+  const resolveAreaName = useCallback(async (coords: { lat: number; lng: number }) => {
+    console.log('[Location] reverse geocode start')
+    try {
+      const res = await fetch('/api/location/reverse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(coords),
+        signal: AbortSignal.timeout(8000),
+      })
+      const data = await res.json()
+      const label: string | null = data.locationLabel ?? null
+      console.log('[Location] reverse geocode result:', label)
+      setAreaName(label)
+    } catch (err: any) {
+      const reason = err?.name === 'TimeoutError' ? 'timeout' : err?.message
+      console.warn('[Location] reverse geocode failed:', reason)
+      setAreaName(null)
+    }
+  }, [])
+
+  // ── Geolocation ───────────────────────────────────────────────────────────────
   const resolveLocation = useCallback(() => {
     if (!navigator.geolocation) {
+      console.warn('[Location] geolocation not supported')
       setLocationStatus('denied')
       return
     }
-    setLocationStatus('requesting')
-    setLocationLabel(null)
+
+    console.log('[Location] geolocation start')
+    setLocationStatus('locating')
+    setAreaName(null)
+
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        console.log('[Location] geolocation success, coords rounded:',
+          Math.round(coords.lat * 100) / 100,
+          Math.round(coords.lng * 100) / 100,
+        )
         setUserCoords(coords)
-        setLocationStatus('granted')
-        try {
-          const res = await fetch('/api/location/reverse', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(coords),
-          })
-          const data = await res.json()
-          setLocationLabel(data.locationLabel ?? null)
-        } catch {
-          setLocationLabel(null)
-        }
+        setLocationStatus('resolved')
+        await resolveAreaName(coords)
       },
       (err) => {
-        // code 1 = PERMISSION_DENIED; codes 2/3 = unavailable/timeout
-        setLocationStatus(err.code === 1 ? 'denied' : 'idle')
+        const reasons: Record<number, string> = { 1: 'denied', 2: 'unavailable', 3: 'timeout' }
+        console.warn('[Location] geolocation failed, code:', err.code, reasons[err.code] ?? 'unknown')
+        if (err.code === 1) {
+          setLocationStatus('denied')
+        } else {
+          // Codes 2/3: unavailable or timed out (e.g. VPN) — show fallback, don't block
+          setLocationStatus('fallback')
+        }
       },
-      { timeout: 8000 },
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 },
     )
-  }, [])
+  }, [resolveAreaName])
 
-  // Check existing permission on mount — auto-resolve if already granted,
-  // set denied immediately if already blocked, otherwise show CTA (idle)
+  // Check permission on mount — auto-resolve if already granted
   useEffect(() => {
     if (!navigator.geolocation) { setLocationStatus('denied'); return }
     if (!navigator.permissions) { resolveLocation(); return }
     navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+      console.log('[Location] permission state:', result.state)
       if (result.state === 'granted') resolveLocation()
       else if (result.state === 'denied') setLocationStatus('denied')
       // 'prompt' → stay idle, show CTA
-    }).catch(() => resolveLocation()) // permissions API unavailable — just try
+    }).catch(() => resolveLocation())
   }, [resolveLocation])
 
-  // ── Session + fetch ──────────────────────────────────────────────────────────
+  // ── Session + fetch ───────────────────────────────────────────────────────────
   useEffect(() => {
     const raw = localStorage.getItem('nearby_session')
     if (!raw) { router.replace('/'); return }
     const s: Session = JSON.parse(raw)
     setSession(s)
     fetchPlaces(s.groupId)
-  }, [router])
+  }, [router, fetchPlaces])
 
-  const fetchPlaces = async (groupId: string) => {
-    const { data, error } = await supabase
-      .from('recommendations')
-      .select(`
-        note,
-        created_at,
-        place_id,
-        places ( name, formatted_address, lat, lng, photo_urls ),
-        members ( display_name )
-      `)
-      .eq('group_id', groupId)
-      .order('created_at', { ascending: false })
-
-    if (error || !data) { setLoading(false); return }
-
-    // Group by place_id
-    const map = new Map<string, PlaceCard>()
-    for (const r of data as any[]) {
-      const pid: string = r.place_id
-      if (!map.has(pid)) {
-        map.set(pid, {
-          place_id: pid,
-          name: r.places?.name ?? 'Unknown place',
-          formatted_address: r.places?.formatted_address ?? null,
-          lat: r.places?.lat ?? null,
-          lng: r.places?.lng ?? null,
-          photo_urls: r.places?.photo_urls ?? [],
-          recommendations: [],
-          newest_at: r.created_at,
-          distanceKm: null,
-        })
-      }
-      map.get(pid)!.recommendations.push({
-        note: r.note,
-        member_name: r.members?.display_name ?? '??',
-        created_at: r.created_at,
-      })
-    }
-
-    setPlaces([...map.values()])
-    setLoading(false)
-  }
-
-  // ── Sort — recalculate when coords arrive ────────────────────────────────────
+  // ── Sort — recalculate when coords arrive ─────────────────────────────────────
   const sortedPlaces = useCallback((): PlaceCard[] => {
     return [...places]
       .map((p) => ({
@@ -200,6 +252,24 @@ export default function NearbyHome() {
         return new Date(b.newest_at).getTime() - new Date(a.newest_at).getTime()
       })
   }, [places, userCoords])
+
+  // ── Subtitle logic ────────────────────────────────────────────────────────────
+  function locationSubtitle(): { text: string; tappable: boolean } {
+    switch (locationStatus) {
+      case 'locating':
+        return { text: 'Finding food spots near you…', tappable: false }
+      case 'resolved':
+        if (areaName) return { text: `You are currently near ${areaName}`, tappable: true }
+        return { text: 'Showing trusted spots from your circle', tappable: true }
+      case 'fallback':
+        return { text: 'Showing trusted spots from your circle', tappable: true }
+      case 'denied':
+        return { text: 'Location is off. Turn it on in browser settings for better results.', tappable: false }
+      case 'idle':
+      default:
+        return { text: 'Enable location to sort spots near you', tappable: false }
+    }
+  }
 
   const handleLogout = () => {
     localStorage.removeItem('nearby_session')
@@ -227,6 +297,8 @@ export default function NearbyHome() {
   if (!session) return null
 
   const displayed = sortedPlaces()
+  const subtitle = locationSubtitle()
+  const isLocating = locationStatus === 'locating'
 
   return (
     <main className="min-h-screen bg-neutral-50 pb-24">
@@ -246,45 +318,25 @@ export default function NearbyHome() {
           </div>
         </div>
 
-        {/* Location section */}
+        {/* ── Location subtitle ──────────────────────────────────────────────── */}
         <div className="mt-4">
-          {locationStatus === 'requesting' && (
-            <p className="text-xs text-neutral-400">Finding where you are…</p>
-          )}
-
-          {locationStatus === 'granted' && (
-            <button
-              onClick={resolveLocation}
-              className="flex items-center gap-1.5 text-left group"
-            >
-              <span className="text-xs text-neutral-400 group-hover:text-neutral-600 transition-colors">
-                {locationLabel
-                  ? `You are currently near ${locationLabel}`
-                  : 'You are currently near your location'}
-              </span>
-              <span className="text-neutral-300 group-hover:text-neutral-500 transition-colors text-xs">↻</span>
-            </button>
-          )}
-
+          {/* Idle: show CTA button */}
           {locationStatus === 'idle' && (
             <div className="flex items-center gap-3">
-              <p className="text-xs text-neutral-400">
-                Enable location to see places your friends recommend near you
-              </p>
+              <p className="text-xs text-neutral-400">{subtitle.text}</p>
               <button
                 onClick={resolveLocation}
                 className="shrink-0 text-xs text-neutral-600 border border-neutral-300 rounded-full px-3 py-1 hover:bg-neutral-100 transition-colors"
               >
-                Enable location
+                Enable
               </button>
             </div>
           )}
 
+          {/* Denied: nudge toward settings */}
           {locationStatus === 'denied' && (
             <div className="flex items-center gap-3">
-              <p className="text-xs text-neutral-400">
-                Location is off. Turn it on in your browser settings for better results.
-              </p>
+              <p className="text-xs text-neutral-400">{subtitle.text}</p>
               <button
                 onClick={resolveLocation}
                 className="shrink-0 text-xs text-neutral-600 border border-neutral-300 rounded-full px-3 py-1 hover:bg-neutral-100 transition-colors"
@@ -293,12 +345,33 @@ export default function NearbyHome() {
               </button>
             </div>
           )}
+
+          {/* Locating: non-interactive */}
+          {locationStatus === 'locating' && (
+            <p className="text-xs text-neutral-400">{subtitle.text}</p>
+          )}
+
+          {/* Resolved or fallback: tappable refresh line */}
+          {(locationStatus === 'resolved' || locationStatus === 'fallback') && (
+            <button
+              onClick={resolveLocation}
+              disabled={isLocating}
+              className="flex items-center gap-1.5 text-left group disabled:opacity-50"
+            >
+              <span className="text-xs text-neutral-400 group-hover:text-neutral-600 transition-colors">
+                {subtitle.text}
+              </span>
+              <span className="text-neutral-300 group-hover:text-neutral-500 transition-colors text-xs" aria-hidden>
+                ↻
+              </span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* ── Content ─────────────────────────────────────────────────────────── */}
       <div className="px-5 max-w-md mx-auto space-y-4">
-        {loading ? (
+        {placesLoading ? (
           <p className="text-sm text-neutral-400 text-center py-20">Loading…</p>
         ) : displayed.length === 0 ? (
           <div className="rounded-2xl bg-white border border-neutral-200 p-8 text-center shadow-sm mt-4">
@@ -376,7 +449,7 @@ export default function NearbyHome() {
                     </button>
                   )}
 
-                  {/* Initials + actions */}
+                  {/* Initials + share */}
                   <div className="flex items-center justify-between pt-1">
                     <div className="flex gap-1 flex-wrap">
                       {initials.map((ini) => (
@@ -416,7 +489,6 @@ export default function NearbyHome() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
           onClick={closeGallery}
         >
-          {/* Close */}
           <button
             className="absolute top-4 right-4 text-white text-2xl leading-none"
             onClick={closeGallery}
@@ -424,7 +496,6 @@ export default function NearbyHome() {
             ×
           </button>
 
-          {/* Prev */}
           {gallery.photos.length > 1 && (
             <button
               className="absolute left-4 text-white text-3xl px-2"
@@ -434,7 +505,6 @@ export default function NearbyHome() {
             </button>
           )}
 
-          {/* Image */}
           <img
             src={gallery.photos[gallery.index]}
             alt="gallery"
@@ -442,7 +512,6 @@ export default function NearbyHome() {
             onClick={(e) => e.stopPropagation()}
           />
 
-          {/* Next */}
           {gallery.photos.length > 1 && (
             <button
               className="absolute right-4 text-white text-3xl px-2"
@@ -452,7 +521,6 @@ export default function NearbyHome() {
             </button>
           )}
 
-          {/* Counter */}
           {gallery.photos.length > 1 && (
             <p className="absolute bottom-4 text-xs text-white/60">
               {gallery.index + 1} / {gallery.photos.length}
