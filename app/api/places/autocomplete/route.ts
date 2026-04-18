@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
     const data = await res.json()
     const suggestions: GoogleSuggestion[] = data.suggestions ?? []
 
-    const basePredictions = suggestions
+    const mappedPredictions: BasePrediction[] = suggestions
       .filter((s) => Boolean(s.placePrediction))
       .map((s) => {
         const p = s.placePrediction
@@ -119,8 +119,10 @@ export async function POST(request: NextRequest) {
           secondaryText: p?.structuredFormat?.secondaryText?.text ?? '',
           distanceMeters: p?.distanceMeters ?? null,
           rating: null,
-        } satisfies BasePrediction
+        }
       })
+
+    const basePredictions = mappedPredictions
       .filter((item): item is BasePrediction & { placeId: string } => typeof item.placeId === 'string' && item.placeId.length > 0)
 
     const top = basePredictions.slice(0, 6)
