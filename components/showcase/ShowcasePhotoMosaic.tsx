@@ -6,6 +6,7 @@ import { formatDistanceKm } from '@/lib/showcase-utils'
 
 type Props = {
   items: ShowcaseItem[]
+  locationMode?: boolean
 }
 
 function mapsUrl(item: ShowcaseItem): string {
@@ -15,39 +16,42 @@ function mapsUrl(item: ShowcaseItem): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.placeName)}`
 }
 
-// Determine tile span class based on rank — creates the collage feel
-function tileClass(rank: number): string {
-  if (rank === 1) return 'col-span-2 row-span-2'   // hero tile: 2×2
-  if (rank === 2) return 'col-span-2 row-span-1'   // wide tile
-  if (rank === 3) return 'col-span-1 row-span-2'   // tall tile
-  return 'col-span-1 row-span-1'                   // standard tile
+// Determine tile span class based on rank or distance — creates the collage feel
+function tileClass(rank: number, displayRank?: number): string {
+  const position = displayRank ?? rank
+  if (position === 1) return 'col-span-2 row-span-2'   // hero tile: 2×2
+  if (position === 2) return 'col-span-2 row-span-1'   // wide tile
+  if (position === 3) return 'col-span-1 row-span-2'   // tall tile
+  return 'col-span-1 row-span-1'                       // standard tile
 }
 
 // Mobile span (2-col grid)
-function mobileTileClass(rank: number): string {
-  if (rank === 1) return 'col-span-2'
+function mobileTileClass(rank: number, displayRank?: number): string {
+  const position = displayRank ?? rank
+  if (position === 1) return 'col-span-2'
   return 'col-span-1'
 }
 
 type TileProps = {
   item: ShowcaseItem
   rank: number
+  displayRank?: number
 }
 
-function MosaicTile({ item, rank }: TileProps) {
+function MosaicTile({ item, rank, displayRank }: TileProps) {
   const [overlayVisible, setOverlayVisible] = useState(false)
   const photo = item.photos[0] ?? null
   const url = mapsUrl(item)
-  const isTop3 = rank <= 3
+  const isTop3 = (displayRank ?? rank) <= 3
 
   return (
     <a
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      // Desktop: use rank-based span. Mobile: only rank 1 is wide.
+      // Desktop: use rank-based or distance-based span. Mobile: only position 1 is wide.
       className={`group relative overflow-hidden bg-[#1a2438] cursor-pointer focus-visible:ring-2 focus-visible:ring-[#1f355d]
-        ${mobileTileClass(rank)} sm:${tileClass(rank)}
+        ${mobileTileClass(rank, displayRank)} sm:${tileClass(rank, displayRank)}
       `}
       onMouseEnter={() => setOverlayVisible(true)}
       onMouseLeave={() => setOverlayVisible(false)}
@@ -136,16 +140,35 @@ function MosaicTile({ item, rank }: TileProps) {
   )
 }
 
-export default function ShowcasePhotoMosaic({ items }: Props) {
+export default function ShowcasePhotoMosaic({ items, locationMode }: Props) {
   if (!items.length) return null
+
+  let displayItems = items
+  const displayRankMap = new Map<string, number>()
+
+  if (locationMode) {
+    // Sort by distance (nearest first) and assign display ranks
+    const itemsWithDistance = items.filter((item) => item.distanceKm != null)
+    const itemsWithoutDistance = items.filter((item) => item.distanceKm == null)
+
+    displayItems = [...itemsWithDistance, ...itemsWithoutDistance]
+    displayItems.forEach((item, idx) => {
+      displayRankMap.set(item.placeId, idx + 1)
+    })
+  }
 
   return (
     <div
       className="grid grid-cols-2 sm:grid-cols-4 gap-[2px] w-full"
       style={{ gridAutoRows: 'clamp(140px, 22vw, 220px)' }}
     >
-      {items.map((item) => (
-        <MosaicTile key={item.placeId} item={item} rank={item.rank} />
+      {displayItems.map((item) => (
+        <MosaicTile
+          key={item.placeId}
+          item={item}
+          rank={item.rank}
+          displayRank={locationMode ? displayRankMap.get(item.placeId) : undefined}
+        />
       ))}
     </div>
   )

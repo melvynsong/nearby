@@ -8,6 +8,7 @@ import { attachDistances, type ShowcaseItem } from '@/lib/showcase-utils'
 import { apiPath, withBasePath } from '@/lib/base-path'
 
 const LOCATION_PREF_KEY = 'nearby_showcase_location_pref'
+const LOCATION_MODE_KEY = 'nearby_showcase_location_mode'
 
 type LocationPref = 'allowed' | 'declined' | null
 
@@ -95,6 +96,23 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
   const [error, setError] = useState(false)
   const [notFound, setNotFound] = useState(false)
   const [descriptionsLoaded, setDescriptionsLoaded] = useState(false)
+  const [locationModeEnabled, setLocationModeEnabledState] = useState(() => {
+    // Initialize from localStorage if available
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem(LOCATION_MODE_KEY)
+      return stored === 'true'
+    }
+    return false
+  })
+
+  // Persist location mode to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem(LOCATION_MODE_KEY, String(locationModeEnabled))
+  }, [locationModeEnabled])
+
+  const setLocationModeEnabled = useCallback((value: boolean | ((prev: boolean) => boolean)) => {
+    setLocationModeEnabledState(value)
+  }, [])
 
   // Fetch showcase data
   useEffect(() => {
@@ -158,7 +176,15 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
       .catch(() => {}) // Non-fatal
   }, [items.length, descriptionsLoaded])
 
-  const { showPrompt, locating, handleAllow, handleDecline } = useShowcaseLocation(items, setItems)
+  const { showPrompt, locating, locationPref, handleAllow, handleDecline } = useShowcaseLocation(items, setItems)
+
+  const handleToggleLocationMode = useCallback(() => {
+    setLocationModeEnabled((prev) => !prev)
+    if (!locationModeEnabled && locationPref !== 'allowed') {
+      // Prompt for location if not already allowed
+      handleAllow()
+    }
+  }, [locationModeEnabled, locationPref, handleAllow])
 
   if (notFound) {
     return (
@@ -221,12 +247,32 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
           </p>
         )}
 
-        {/* Count badge */}
+        {/* Count badge + Location toggle */}
         {!loading && items.length > 0 && (
-          <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5">
-            <span className="text-sm font-bold text-white">{items.length}</span>
-            <span className="text-xs text-white/60">curated spots</span>
-            {locating && <span className="text-xs text-white/50 animate-pulse">· finding nearby…</span>}
+          <div className="mt-4 flex items-center gap-3">
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5">
+              <span className="text-sm font-bold text-white">{items.length}</span>
+              <span className="text-xs text-white/60">curated spots</span>
+              {locating && <span className="text-xs text-white/50 animate-pulse">· finding nearby…</span>}
+            </div>
+
+            {/* Location awareness toggle */}
+            {items.some((item) => item.distanceKm != null) && (
+              <button
+                onClick={handleToggleLocationMode}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  locationModeEnabled
+                    ? 'bg-amber-400/20 text-amber-200 border border-amber-400/40'
+                    : 'bg-white/10 text-white/70 border border-white/10 hover:bg-white/15'
+                }`}
+              >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
+                  <circle cx="12" cy="9" r="2.5" />
+                </svg>
+                {locationModeEnabled ? 'Location On' : 'Location Off'}
+              </button>
+            )}
           </div>
         )}
       </div>

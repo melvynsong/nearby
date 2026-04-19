@@ -227,6 +227,12 @@ function AddPlaceInner() {
   const [loadingEdit, setLoadingEdit] = useState(mode === 'edit')
   const [editDenied, setEditDenied] = useState(false)
 
+  // ── Group selection (add to multiple groups)
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([])
+  const [showGroupSelector, setShowGroupSelector] = useState(false)
+  const [userGroups, setUserGroups] = useState<Array<{ id: string; name: string }>>([])
+  const [loadingGroups, setLoadingGroups] = useState(false)
+
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null)
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -253,12 +259,66 @@ function AddPlaceInner() {
         console.warn('[PlaceModeGuard]', { invalid_edit_id_detected: rawId, fallback_to_create: true })
         router.replace(withBasePath('/add-place'))
       } else {
+        // Clean state on create mode entry
         console.log('[PlaceCreateEntry]', { confirmed_clean_state: true })
+        setSelectedFile(null)
+        setPreviewUrl(null)
+        setImageTransform(DEFAULT_IMAGE_TRANSFORM)
+        setIsTransformCustomized(false)
+        setShowAdjustSheet(false)
+        setPreviewImageSize(null)
+        setAiResult(emptyAiResult)
+        setAiError('')
+        setSelectedDish(null)
+        setEditingDish(false)
+        setCustomDish('')
+        setQuery('')
+        setPredictions([])
+        setSelectedPlace(null)
+        setNote('')
+        setError('')
+        setShowSaveErrorCard(false)
       }
     }
   // mode and editPlaceId are stable consts derived once — this must run only on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // ── Load user groups for group selection
+  useEffect(() => {
+    if (!session) return
+
+    let mounted = true
+    const loadUserGroups = async () => {
+      setLoadingGroups(true)
+      try {
+        const { data } = await supabase
+          .from('members')
+          .select('group_id, groups(id, name)')
+          .eq('user_id', session?.memberId)
+
+        if (mounted && data && Array.isArray(data)) {
+          const groups = data
+            .filter((m: any) => m.groups && typeof m.groups === 'object' && !Array.isArray(m.groups))
+            .map((m: any) => m.groups as { id: string; name: string })
+          setUserGroups(groups)
+          // Initialize with current group if in create mode
+          if (mode === 'create') {
+            setSelectedGroupIds([session.groupId])
+          }
+        }
+      } catch (err) {
+        console.error('[AddPlace] Failed to load user groups:', err)
+      } finally {
+        if (mounted) setLoadingGroups(false)
+      }
+    }
+
+    void loadUserGroups()
+    return () => {
+      mounted = false
+    }
+  }, [session, mode])
 
   useEffect(() => {
     console.log('[NavigationUI]', { component: 'add-place-back-control', upgraded_from: 'text-link', upgraded_to: 'pill' })
@@ -609,40 +669,49 @@ function AddPlaceInner() {
       return
     }
 
+    const groupsToSave = selectedGroupIds.length > 0 ? selectedGroupIds : [session.groupId]
+    if (!groupsToSave.length) {
+      setError('Please select at least one group.')
+      return
+    }
+
     setSaving(true)
 
     try {
-      const body = new FormData()
-      body.append('memberId',     session.memberId)
-      body.append('groupId',      session.groupId)
-      body.append('googlePlaceId', selectedPlace.google_place_id)
-      body.append('name',         selectedPlace.name)
-      if (selectedPlace.formatted_address) body.append('address', selectedPlace.formatted_address)
-      if (selectedPlace.lat != null) body.append('lat', String(selectedPlace.lat))
-      if (selectedPlace.lng != null) body.append('lng', String(selectedPlace.lng))
-      if (selectedPlace.rating != null) body.append('googleRating', String(selectedPlace.rating))
-      if (selectedPlace.user_rating_count != null) body.append('googleRatingCount', String(selectedPlace.user_rating_count))
-      body.append('dishName',     dishName)
-      if (note.trim()) body.append('note', note.trim())
+      // Save to each selected group
+      for (const groupId of groupsToSave) {
+        const body = new FormData()
+        body.append('memberId', session.memberId)
+        body.append('groupId', groupId)
+        body.append('googlePlaceId', selectedPlace.google_place_id)
+        body.append('name', selectedPlace.name)
+        if (selectedPlace.formatted_address) body.append('address', selectedPlace.formatted_address)
+        if (selectedPlace.lat != null) body.append('lat', String(selectedPlace.lat))
+        if (selectedPlace.lng != null) body.append('lng', String(selectedPlace.lng))
+        if (selectedPlace.rating != null) body.append('googleRating', String(selectedPlace.rating))
+        if (selectedPlace.user_rating_count != null) body.append('googleRatingCount', String(selectedPlace.user_rating_count))
+        body.append('dishName', dishName)
+        if (note.trim()) body.append('note', note.trim())
 
-      if (selectedFile) {
-        const transformToSave = isTransformCustomized ? imageTransform : DEFAULT_IMAGE_TRANSFORM
-        body.append('imageTransform', JSON.stringify(transformToSave))
-        body.append('file', selectedFile, selectedFile.name)
-      }
-      if (editPlaceId) {
-        body.append('editPlaceId', editPlaceId)
-      }
-      if (aiResult.analysisEventId) {
-        body.append('analysisEventId', aiResult.analysisEventId)
-      }
+        if (selectedFile) {
+          const transformToSave = isTransformCustomized ? imageTransform : DEFAULT_IMAGE_TRANSFORM
+          body.append('imageTransform', JSON.stringify(transformToSave))
+          body.append('file', selectedFile, selectedFile.name)
+        }
+        if (editPlaceId) {
+          body.append('editPlaceId', editPlaceId)
+        }
+        if (aiResult.analysisEventId) {
+          body.append('analysisEventId', aiResult.analysisEventId)
+        }
 
-      const res  = await fetch(apiPath('/api/places/save'), { method: 'POST', body })
-      const data = await res.json() as { ok: boolean; message?: string }
+        const res = await fetch(apiPath('/api/places/save'), { method: 'POST', body })
+        const data = await res.json() as { ok: boolean; message?: string }
 
-      if (!data.ok) {
-        console.error('[Nearby][Save] Server save failed:', data.message)
-        throw new Error(data.message ?? 'Save failed')
+        if (!data.ok) {
+          console.error('[Nearby][Save] Server save failed:', data.message)
+          throw new Error(data.message ?? 'Save failed')
+        }
       }
 
       // Brief toast before navigating away
@@ -1063,6 +1132,60 @@ function AddPlaceInner() {
                 rows={3}
                 className="w-full resize-none rounded-xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-neutral-600 min-w-0 box-border"
               />
+            </section>
+          )}
+
+          {/* ── Group selection section ─────────────────────────────── */}
+          {isDishConfirmed && !loadingGroups && userGroups.length > 0 && (
+            <section className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">Add to groups</p>
+                <button
+                  onClick={() => setShowGroupSelector(!showGroupSelector)}
+                  className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                >
+                  {showGroupSelector ? 'Done' : 'Edit'}
+                </button>
+              </div>
+
+              {showGroupSelector ? (
+                <div className="space-y-2">
+                  {userGroups.map((group) => (
+                    <label key={group.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-neutral-50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedGroupIds.includes(group.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedGroupIds([...selectedGroupIds, group.id])
+                          } else {
+                            setSelectedGroupIds(selectedGroupIds.filter((id) => id !== group.id))
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-neutral-300"
+                      />
+                      <span className="text-sm text-neutral-700">{group.name}</span>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {selectedGroupIds.length === 0 ? (
+                    <p className="text-sm text-neutral-500">Current group only</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedGroupIds.map((id) => {
+                        const group = userGroups.find((g) => g.id === id)
+                        return group ? (
+                          <span key={id} className="px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full">
+                            {group.name}
+                          </span>
+                        ) : null
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
           )}
 

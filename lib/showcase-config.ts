@@ -209,3 +209,7 @@ export async function getShowcaseConfigByKey(
   const showcases = await getAvailableShowcases(db, 5)
   return showcases.find((showcase) => showcase.key === key) ?? null
 }
+
+export function getCategoryScoreMode(): CategoryScoreMode {
+  return resolveCategoryScoreMode()
+}
