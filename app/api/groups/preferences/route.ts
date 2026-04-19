@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     console.log('[GroupVisibility]', {
       group_id: groupId,
       individual_id: requesterUserId,
-      is_hidden: isHidden,
+      action: isHidden ? 'hide' : 'unhide',
     })
 
     return NextResponse.json({ ok: true, groupId, isHidden })

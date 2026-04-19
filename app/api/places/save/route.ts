@@ -11,6 +11,17 @@ function getDb() {
   }
 }
 
+async function resolveIndividualId(memberId: string): Promise<string> {
+  if (!memberId) return ''
+  const db = getDb()
+  const result = await db
+    .from('members')
+    .select('user_id')
+    .eq('id', memberId)
+    .maybeSingle()
+  return result.data?.user_id ?? memberId
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
@@ -25,6 +36,7 @@ export async function POST(request: NextRequest) {
     const dishName   = ((formData.get('dishName')     as string | null) ?? '').trim()
     const note       = ((formData.get('note')         as string | null) ?? '').trim()
     const imageTransformRaw = (formData.get('imageTransform') as string | null) ?? ''
+    const editPlaceId = ((formData.get('editPlaceId') as string | null) ?? '').trim()
     const file       = formData.get('file') as File | null
 
     if (!memberId || !groupId || !googlePlaceId || !name) {
@@ -74,51 +86,103 @@ export async function POST(request: NextRequest) {
     let placeId: string
     let existingPhotoUrls: string[] = []
     let existingImageTransforms: Record<string, unknown> = {}
+    let ownerRecommendationId = ''
+    const individualId = await resolveIndividualId(memberId)
 
-    const preferredLookup = await db
-      .from('places')
-      .select('id, photo_urls, image_transforms, lat, lng')
-      .eq('google_place_id', googlePlaceId)
-      .maybeSingle()
+    if (editPlaceId) {
+      const ownerRecommendationResult = await db
+        .from('recommendations')
+        .select('id, member_id, created_at')
+        .eq('place_id', editPlaceId)
+        .eq('group_id', groupId)
+        .eq('member_id', memberId)
+        .order('created_at', { ascending: false })
+        .limit(1)
 
-    let existingPlace = preferredLookup.data
-    let lookupErr = preferredLookup.error
+      const ownerRecommendation = (ownerRecommendationResult.data ?? [])[0] ?? null
 
-    if (lookupErr && lookupErr.code === '42703') {
-      const fallbackLookup = await db
+      if (ownerRecommendationResult.error || !ownerRecommendation?.id) {
+        console.log('[PlaceEdit]', {
+          place_id: editPlaceId,
+          individual_id: individualId,
+          is_owner: false,
+          action: 'save_edit',
+        })
+        return NextResponse.json({ ok: false, message: 'You cannot edit this place.' }, { status: 403 })
+      }
+
+      const editPlaceResult = await db
         .from('places')
-        .select('id, photo_urls, lat, lng')
+        .select('id, photo_urls, image_transforms')
+        .eq('id', editPlaceId)
+        .maybeSingle()
+
+      if (editPlaceResult.error || !editPlaceResult.data?.id) {
+        return NextResponse.json({ ok: false, message: 'Place not found.' }, { status: 404 })
+      }
+
+      placeId = editPlaceId
+      ownerRecommendationId = ownerRecommendation.id
+      existingPhotoUrls = editPlaceResult.data.photo_urls ?? []
+      existingImageTransforms = ((editPlaceResult.data as { image_transforms?: Record<string, unknown> }).image_transforms) ?? {}
+
+      await db
+        .from('places')
+        .update({
+          google_place_id: googlePlaceId,
+          name,
+          formatted_address: address,
+          lat,
+          lng,
+        })
+        .eq('id', placeId)
+    } else {
+
+      const preferredLookup = await db
+        .from('places')
+        .select('id, photo_urls, image_transforms, lat, lng')
         .eq('google_place_id', googlePlaceId)
         .maybeSingle()
-      existingPlace = fallbackLookup.data
-      lookupErr = fallbackLookup.error
-    }
 
-    if (lookupErr) {
-      console.error('[Nearby][API][Save] Place lookup error:', lookupErr)
-      return NextResponse.json({ ok: false, message: 'Could not look up place.' }, { status: 500 })
-    }
+      let existingPlace = preferredLookup.data
+      let lookupErr = preferredLookup.error
 
-    if (existingPlace) {
-      placeId = existingPlace.id
-      existingPhotoUrls = existingPlace.photo_urls ?? []
-      existingImageTransforms = ((existingPlace as { image_transforms?: Record<string, unknown> }).image_transforms) ?? {}
-
-      if ((existingPlace.lat == null || existingPlace.lng == null) && lat != null && lng != null) {
-        await db.from('places').update({ lat, lng }).eq('id', placeId)
+      if (lookupErr && lookupErr.code === '42703') {
+        const fallbackLookup = await db
+          .from('places')
+          .select('id, photo_urls, lat, lng')
+          .eq('google_place_id', googlePlaceId)
+          .maybeSingle()
+        existingPlace = fallbackLookup.data
+        lookupErr = fallbackLookup.error
       }
-    } else {
-      const { data: inserted, error: insertErr } = await db
-        .from('places')
-        .insert({ google_place_id: googlePlaceId, name, formatted_address: address, lat, lng, photo_urls: [] })
-        .select('id')
-        .single()
 
-      if (insertErr || !inserted) {
-        console.error('[Nearby][API][Save] Place insert error:', insertErr)
-        return NextResponse.json({ ok: false, message: 'Could not create place record.' }, { status: 500 })
+      if (lookupErr) {
+        console.error('[Nearby][API][Save] Place lookup error:', lookupErr)
+        return NextResponse.json({ ok: false, message: 'Could not look up place.' }, { status: 500 })
       }
-      placeId = inserted.id
+
+      if (existingPlace) {
+        placeId = existingPlace.id
+        existingPhotoUrls = existingPlace.photo_urls ?? []
+        existingImageTransforms = ((existingPlace as { image_transforms?: Record<string, unknown> }).image_transforms) ?? {}
+
+        if ((existingPlace.lat == null || existingPlace.lng == null) && lat != null && lng != null) {
+          await db.from('places').update({ lat, lng }).eq('id', placeId)
+        }
+      } else {
+        const { data: inserted, error: insertErr } = await db
+          .from('places')
+          .insert({ google_place_id: googlePlaceId, name, formatted_address: address, lat, lng, photo_urls: [] })
+          .select('id')
+          .single()
+
+        if (insertErr || !inserted) {
+          console.error('[Nearby][API][Save] Place insert error:', insertErr)
+          return NextResponse.json({ ok: false, message: 'Could not create place record.' }, { status: 500 })
+        }
+        placeId = inserted.id
+      }
     }
 
     // ── 3. Upload photo to storage (server-side) ──────────────────────────
@@ -172,13 +236,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ── 4. Insert recommendation ──────────────────────────────────────────
-    const { error: recErr } = await db.from('recommendations').insert({
-      group_id: groupId,
-      member_id: memberId,
-      place_id: placeId,
-      note: note || null,
-    })
+    // ── 4. Insert/update recommendation ───────────────────────────────────
+    let recErr: { message?: string } | null = null
+
+    if (editPlaceId) {
+      const updateRecommendationResult = await db
+        .from('recommendations')
+        .update({ note: note || null })
+        .eq('id', ownerRecommendationId)
+
+      recErr = updateRecommendationResult.error as { message?: string } | null
+
+      console.log('[PlaceEdit]', {
+        place_id: editPlaceId,
+        individual_id: individualId,
+        is_owner: true,
+        action: 'save_edit',
+      })
+    } else {
+      const insertRecommendationResult = await db.from('recommendations').insert({
+        group_id: groupId,
+        member_id: memberId,
+        place_id: placeId,
+        note: note || null,
+      })
+      recErr = insertRecommendationResult.error as { message?: string } | null
+    }
 
     if (recErr) {
       console.error('[Nearby][API][Save] Recommendation insert error:', recErr)

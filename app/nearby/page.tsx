@@ -86,7 +86,7 @@ export default function NearbyHome() {
   const [gallery, setGallery] = useState<GalleryState>(null)
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set())
   const [showGroupMenu, setShowGroupMenu] = useState(false)
-  const [showHiddenGroups, setShowHiddenGroups] = useState(false)
+  const [hiddenSectionExpanded, setHiddenSectionExpanded] = useState(false)
   const [hiddenGroupIds, setHiddenGroupIds] = useState<Set<string>>(new Set())
   const [currentUserId, setCurrentUserId] = useState('')
   const [visibilityBusyGroupId, setVisibilityBusyGroupId] = useState<string | null>(null)
@@ -241,6 +241,11 @@ export default function NearbyHome() {
       if (!response.ok || !result?.ok) {
         throw new Error(result?.message ?? 'Could not update visibility.')
       }
+
+      console.log('[GroupSwitcher]', {
+        current_group_id: activeGroup?.groupId ?? null,
+        action: isHidden ? 'hide' : 'unhide',
+      })
     } catch (error) {
       console.error('[Nearby][GroupVisibility] Update failed:', error)
       setHiddenGroupIds((prev) => {
@@ -252,7 +257,7 @@ export default function NearbyHome() {
     } finally {
       setVisibilityBusyGroupId(null)
     }
-  }, [currentUserId])
+  }, [currentUserId, activeGroup?.groupId])
 
   // ── Session init ──────────────────────────────────────────────────────────────
 
@@ -336,6 +341,10 @@ export default function NearbyHome() {
     localStorage.setItem('nearby_last_group_id', entry.groupId)
 
     setActiveGroup(entry)
+    console.log('[GroupSwitcher]', {
+      current_group_id: activeGroup?.groupId ?? null,
+      action: 'switch',
+    })
     setShowGroupMenu(false)
     setSelectedCategoryId(null)
     setPlaces([])
@@ -540,17 +549,22 @@ export default function NearbyHome() {
     }
   }
 
+  const openEditPlace = (place: PlaceCard) => {
+    if (!activeGroup) return
+    router.push(withBasePath(`/add-place?editPlaceId=${encodeURIComponent(place.place_id)}`))
+  }
+
+  useEffect(() => {
+    console.log('[NavigationUI]', { component: 'nearby-group-switcher', upgraded_from: 'basic-dropdown', upgraded_to: 'structured-sections' })
+  }, [])
+
   if (!session || !activeGroup) return null
 
   const displayed = displayedPlaces()
   const subtitle = locationSubtitle()
   const allGroups = session.allGroups ?? []
-  const hiddenCount = allGroups.filter((group) => hiddenGroupIds.has(group.groupId)).length
-  const visibleGroups = allGroups.filter((group) => {
-    if (showHiddenGroups) return true
-    if (group.groupId === activeGroup.groupId) return true
-    return !hiddenGroupIds.has(group.groupId)
-  })
+  const hiddenGroups = allGroups.filter((group) => hiddenGroupIds.has(group.groupId) && group.groupId !== activeGroup.groupId)
+  const activeGroups = allGroups.filter((group) => !hiddenGroupIds.has(group.groupId) && group.groupId !== activeGroup.groupId)
 
   return (
     <main className="min-h-screen bg-[#f5f6f8] pb-24">
@@ -601,61 +615,115 @@ export default function NearbyHome() {
           </button>
 
           {showGroupMenu && (
-            <div className="absolute z-20 mt-2 w-64 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg transition-all duration-200">
-              <div className="max-h-60 overflow-auto py-1">
-                {visibleGroups.map((g) => {
-                  const isHidden = hiddenGroupIds.has(g.groupId)
-                  return (
-                    <div key={g.groupId} className="flex items-center gap-2 px-2 py-1.5">
-                      <button
-                        onClick={() => switchGroup(g)}
-                        className={`min-w-0 flex-1 rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${
-                          activeGroup.groupId === g.groupId
-                            ? 'bg-[#ebf0f9] text-[#1f355d] font-medium'
-                            : 'text-neutral-600 hover:bg-neutral-50'
-                        }`}
-                      >
-                        <span className="truncate">{g.groupName}</span>
-                      </button>
-                      <button
-                        onClick={() => void setGroupVisibility(g.groupId, !isHidden)}
-                        disabled={visibilityBusyGroupId === g.groupId}
-                        className="shrink-0 rounded-md border border-[#d6ddeb] bg-white px-2 py-1 text-[11px] font-medium text-neutral-600 disabled:opacity-50"
-                      >
-                        {visibilityBusyGroupId === g.groupId ? '...' : isHidden ? 'Unhide' : 'Hide'}
-                      </button>
-                    </div>
-                  )
-                })}
-                {visibleGroups.length === 0 && (
-                  <p className="px-3 py-3 text-xs text-neutral-500">No visible groups. Enable hidden groups to manage them.</p>
+            <div className="absolute z-20 mt-2 w-[min(92vw,22rem)] overflow-hidden rounded-2xl border border-neutral-200 bg-white p-2 shadow-xl transition-all duration-200">
+              <div className="rounded-xl border border-[#dce3f0] bg-[#f7f9fe] px-3 py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-sm font-medium text-[#243a62]">{activeGroup.groupName}</p>
+                  <span className="rounded-full border border-[#d6ddeb] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500">Current</span>
+                </div>
+              </div>
+
+              <div className="mt-2">
+                <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Active Groups</p>
+                {activeGroups.length === 0 ? (
+                  <p className="px-2 py-2 text-xs text-neutral-500">No other active groups.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {activeGroups.map((g) => (
+                      <div key={g.groupId} className="group flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-neutral-50">
+                        <button
+                          onClick={() => switchGroup(g)}
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <p className="truncate text-sm font-medium text-neutral-800">{g.groupName}</p>
+                        </button>
+                        <button
+                          onClick={() => void setGroupVisibility(g.groupId, true)}
+                          disabled={visibilityBusyGroupId === g.groupId}
+                          className="shrink-0 rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-white hover:text-neutral-700 disabled:opacity-50"
+                          title="Hide group"
+                          aria-label="Hide group"
+                        >
+                          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M3 3l18 18" />
+                            <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+                            <path d="M9.88 5.09A10.94 10.94 0 0 1 12 5c5.05 0 9.27 3.11 10.5 7.5a11.8 11.8 0 0 1-2.23 3.82" />
+                            <path d="M6.61 6.61A11.84 11.84 0 0 0 1.5 12.5a11.82 11.82 0 0 0 4.44 5.98" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
 
-              <div className="border-t border-neutral-100 p-1">
-                <button
-                  onClick={() => setShowHiddenGroups((prev) => !prev)}
-                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 transition-colors"
-                >
-                  {showHiddenGroups ? 'Hide hidden groups' : `Show hidden groups${hiddenCount > 0 ? ` (${hiddenCount})` : ''}`}
-                </button>
+              {hiddenGroups.length > 0 && (
+                <div className="mt-2 rounded-xl border border-neutral-200 bg-[#fbfcff]">
+                  <button
+                    onClick={() => {
+                      setHiddenSectionExpanded((prev) => !prev)
+                      console.log('[GroupSwitcher]', {
+                        current_group_id: activeGroup.groupId,
+                        action: 'expand_hidden',
+                      })
+                    }}
+                    className="flex w-full items-center justify-between px-3 py-2 text-left"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Hidden Groups ({hiddenGroups.length})</p>
+                    <span className={`text-neutral-400 transition-transform ${hiddenSectionExpanded ? 'rotate-180' : ''}`}>⌄</span>
+                  </button>
+                  <div className={`overflow-hidden transition-[max-height] duration-200 ${hiddenSectionExpanded ? 'max-h-56' : 'max-h-0'}`}>
+                    <div className="space-y-1 px-2 pb-2">
+                      {hiddenGroups.map((g) => (
+                        <div key={g.groupId} className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-white">
+                          <button
+                            onClick={() => {
+                              void setGroupVisibility(g.groupId, false)
+                              switchGroup(g)
+                            }}
+                            className="min-w-0 flex-1 text-left"
+                          >
+                            <p className="truncate text-sm font-medium text-neutral-700">{g.groupName}</p>
+                          </button>
+                          <button
+                            onClick={() => void setGroupVisibility(g.groupId, false)}
+                            disabled={visibilityBusyGroupId === g.groupId}
+                            className="shrink-0 rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-white hover:text-neutral-700 disabled:opacity-50"
+                            title="Unhide group"
+                            aria-label="Unhide group"
+                          >
+                            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-2 border-t border-neutral-200 pt-2">
                 <button
                   onClick={() => {
                     setShowGroupMenu(false)
                     setShowCreateGroupModal(true)
                   }}
-                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-[#1f355d] hover:bg-[#edf2fb] transition-colors font-medium"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-[#1f355d] hover:bg-[#edf2fb] transition-colors font-medium"
                 >
-                  + Create new group
+                  <span className="text-base leading-none">＋</span>
+                  <span>Create New Group</span>
                 </button>
                 <button
                   onClick={() => {
                     setShowGroupMenu(false)
                     router.push(withBasePath('/join-group'))
                   }}
-                  className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 transition-colors"
+                  className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 transition-colors"
                 >
-                  + Join group with passcode
+                  <span className="text-sm leading-none">#</span>
+                  <span>Join Group with Passcode</span>
                 </button>
               </div>
             </div>
@@ -781,19 +849,32 @@ export default function NearbyHome() {
 
                 {/* Subtle trash icon — only for own places */}
                 {isOwnPlace && (
-                  <button
-                    onClick={() => { setDeletePlaceTarget(place); setDeletePlaceError('') }}
-                    className="absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white/80 transition-colors hover:bg-rose-600/80 hover:text-white"
-                    title="Delete place"
-                    aria-label="Delete place"
-                  >
-                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                      <path d="M10 11v6M14 11v6" />
-                      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                    </svg>
-                  </button>
+                  <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+                    <button
+                      onClick={() => openEditPlace(place)}
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-black/35 text-white/80 transition-colors hover:bg-black/55 hover:text-white"
+                      title="Edit place"
+                      aria-label="Edit place"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => { setDeletePlaceTarget(place); setDeletePlaceError('') }}
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-black/35 text-white/80 transition-colors hover:bg-rose-600/80 hover:text-white"
+                      title="Delete place"
+                      aria-label="Delete place"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                        <path d="M10 11v6M14 11v6" />
+                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                      </svg>
+                    </button>
+                  </div>
                 )}
 
                 {/* Photo */}

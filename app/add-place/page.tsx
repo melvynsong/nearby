@@ -157,6 +157,9 @@ export default function AddPlace() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [showSaveErrorCard, setShowSaveErrorCard] = useState(false)
+  const [editPlaceId, setEditPlaceId] = useState('')
+  const [loadingEdit, setLoadingEdit] = useState(false)
+  const [editDenied, setEditDenied] = useState(false)
 
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null)
 
@@ -164,6 +167,19 @@ export default function AddPlace() {
   const dropdownRef = useRef<HTMLDivElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const galleryInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const nextEditPlaceId = params.get('editPlaceId') ?? ''
+    if (nextEditPlaceId) {
+      setEditPlaceId(nextEditPlaceId)
+    }
+  }, [])
+
+  useEffect(() => {
+    console.log('[NavigationUI]', { component: 'add-place-back-control', upgraded_from: 'text-link', upgraded_to: 'pill' })
+  }, [])
 
   useEffect(() => {
     if (!navigator.geolocation) return
@@ -212,6 +228,56 @@ export default function AddPlace() {
       mounted = false
     }
   }, [session, router])
+
+  useEffect(() => {
+    if (!session?.memberId || !session?.groupId || !editPlaceId) return
+
+    const loadEditData = async () => {
+      setLoadingEdit(true)
+      setEditDenied(false)
+      setError('')
+
+      try {
+        const response = await fetch(apiPath('/api/places/edit'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            placeId: editPlaceId,
+            memberId: session.memberId,
+            groupId: session.groupId,
+          }),
+        })
+
+        const result = await response.json()
+        if (!response.ok || !result?.ok) {
+          if (response.status === 403) {
+            setEditDenied(true)
+            return
+          }
+          setError(result?.message ?? 'Could not load this place for editing.')
+          return
+        }
+
+        setSelectedPlace(result.place ?? null)
+        setQuery((result.place?.name as string) ?? '')
+        const noteValue = (result.note as string) ?? ''
+        setNote(noteValue)
+        const dishName = ((result.dishName as string) ?? '').trim()
+        if (dishName) {
+          setSelectedDish(dishName)
+          setCustomDish('')
+        }
+        setFlowState('analysis_success')
+      } catch (loadError) {
+        console.error('[Nearby][PlaceEdit] Load failed:', loadError)
+        setError('Could not load this place for editing.')
+      } finally {
+        setLoadingEdit(false)
+      }
+    }
+
+    void loadEditData()
+  }, [session?.memberId, session?.groupId, editPlaceId])
 
   // ── Run OpenAI analysis
   const runAnalysis = useCallback(async (file: File) => {
@@ -389,6 +455,9 @@ export default function AddPlace() {
         body.append('imageTransform', JSON.stringify(transformToSave))
         body.append('file', selectedFile, selectedFile.name)
       }
+      if (editPlaceId) {
+        body.append('editPlaceId', editPlaceId)
+      }
 
       const res  = await fetch(apiPath('/api/places/save'), { method: 'POST', body })
       const data = await res.json() as { ok: boolean; message?: string }
@@ -442,15 +511,31 @@ export default function AddPlace() {
         <button
           onClick={() => router.back()}
           disabled={isBlocking}
-          className="mb-5 text-sm text-neutral-500 hover:text-neutral-800 transition-colors disabled:opacity-40"
+          className="mb-5 inline-flex h-8 items-center gap-1.5 rounded-full border border-[#d7deec] bg-white px-3 text-xs font-medium text-[#44506a] shadow-sm transition-colors hover:bg-[#edf2fb] disabled:opacity-40"
         >
-          ← Back
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          <span>Back</span>
         </button>
 
-        <h1 className="text-2xl font-bold tracking-tight text-neutral-900">Add Food Spot</h1>
-        <p className="mt-1 text-sm text-neutral-500">Start with a photo.</p>
+        <h1 className="text-2xl font-bold tracking-tight text-neutral-900">{editPlaceId ? 'Edit Food Spot' : 'Add Food Spot'}</h1>
+        <p className="mt-1 text-sm text-neutral-500">{editPlaceId ? 'Update details and save to this same place.' : 'Start with a photo.'}</p>
 
-        <div className="mt-5 space-y-4">
+        {loadingEdit && <p className="mt-3 text-sm text-neutral-500">Loading place details...</p>}
+
+        {editDenied && (
+          <div className="mt-4">
+            <ErrorState
+              title="Edit not allowed"
+              message="Only the place owner can edit this place."
+              primaryLabel="Go to Nearby"
+              onPrimary={() => router.push(withBasePath('/nearby'))}
+            />
+          </div>
+        )}
+
+        <div className={`mt-5 space-y-4 ${editDenied ? 'pointer-events-none opacity-40' : ''}`}>
 
           {/* ── Photo section ──────────────────────────────────────── */}
           <section className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
@@ -793,7 +878,7 @@ export default function AddPlace() {
               disabled={saving || loadingDetails || isBlocking}
               className="w-full rounded-xl bg-[#1f355d] hover:bg-[#162746] px-4 py-3 text-sm font-semibold text-white transition-all duration-300 disabled:opacity-40"
             >
-              {saving ? 'Saving...' : 'Save food spot'}
+              {saving ? 'Saving...' : editPlaceId ? 'Save changes' : 'Save food spot'}
             </button>
           )}
 

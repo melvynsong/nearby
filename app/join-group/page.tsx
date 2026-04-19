@@ -52,6 +52,10 @@ export default function JoinGroupPage() {
     setGated(true)
   }, [])
 
+  useEffect(() => {
+    console.log('[NavigationUI]', { component: 'join-group-back-control', upgraded_from: 'text-link', upgraded_to: 'pill' })
+  }, [])
+
   const handleJoin = async () => {
     setError('')
 
@@ -148,9 +152,12 @@ export default function JoinGroupPage() {
       <div className="nearby-shell pt-8">
         <button
           onClick={() => router.back()}
-          className="mb-5 text-sm text-neutral-500 transition-colors hover:text-neutral-800"
+          className="mb-5 inline-flex h-8 items-center gap-1.5 rounded-full border border-[#d7deec] bg-white px-3 text-xs font-medium text-[#44506a] shadow-sm transition-colors hover:bg-[#edf2fb]"
         >
-          ← Back
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          <span>Back</span>
         </button>
 
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">

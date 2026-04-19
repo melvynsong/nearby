@@ -126,6 +126,10 @@ export default function CreateGroup() {
     void loadContext()
   }, [])
 
+  useEffect(() => {
+    console.log('[NavigationUI]', { component: 'create-group-back-control', upgraded_from: 'text-link', upgraded_to: 'pill' })
+  }, [])
+
   const addFriend = () => {
     setFriends((prev) => [...prev, { id: String(Date.now()), name: '', phone: '' }])
   }
@@ -274,9 +278,12 @@ export default function CreateGroup() {
       <div className="nearby-shell">
         <button
           onClick={() => router.back()}
-          className="mb-5 text-sm text-neutral-500 hover:text-neutral-800 transition-colors"
+          className="mb-5 inline-flex h-8 items-center gap-1.5 rounded-full border border-[#d7deec] bg-white px-3 text-xs font-medium text-[#44506a] shadow-sm transition-colors hover:bg-[#edf2fb]"
         >
-          ← Back
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          <span>Back</span>
         </button>
 
         <h1 className="text-xl font-bold text-neutral-900 mb-1">Create a group</h1>
