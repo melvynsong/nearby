@@ -19,22 +19,50 @@ function getDb() {
 async function buildGroupEntriesForUser(userId: string): Promise<GroupEntry[]> {
   const supabase = getDb()
 
+  const preferredMemberships = await supabase
+    .from('group_memberships')
+    .select('user_id, group_id, member_id, status')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+
+  let membershipsData = preferredMemberships.data as Array<{ user_id: string; group_id: string; member_id: string | null; status?: string | null }> | null
+  let membershipsError = preferredMemberships.error as { code?: string; message?: string } | null
+
+  if (membershipsError?.code === '42703' || membershipsError?.code === 'PGRST204') {
+    const fallbackMemberships = await supabase
+      .from('group_memberships')
+      .select('user_id, group_id, member_id')
+      .eq('user_id', userId)
+
+    membershipsData = fallbackMemberships.data as Array<{ user_id: string; group_id: string; member_id: string | null }> | null
+    membershipsError = fallbackMemberships.error as { code?: string; message?: string } | null
+  }
+
+  if (membershipsError) {
+    throw membershipsError
+  }
+
+  const memberships = membershipsData ?? []
+  if (memberships.length === 0) return []
+
+  const memberIds = memberships.map((row) => row.member_id).filter(Boolean) as string[]
+  if (memberIds.length === 0) return []
+
   const membersResult = await supabase
     .from('members')
     .select('id, display_name, group_id')
-    .eq('user_id', userId)
+    .in('id', memberIds)
 
   if (membersResult.error) {
     throw membersResult.error
   }
 
   const members = (membersResult.data ?? []) as Array<{ id: string; display_name: string; group_id: string }>
-  if (members.length === 0) return []
 
   const groupsResult = await supabase
     .from('groups')
     .select('id, name')
-    .in('id', members.map((member) => member.group_id))
+    .in('id', memberships.map((membership) => membership.group_id))
 
   if (groupsResult.error) {
     throw groupsResult.error
@@ -42,14 +70,15 @@ async function buildGroupEntriesForUser(userId: string): Promise<GroupEntry[]> {
 
   const groups = (groupsResult.data ?? []) as Array<{ id: string; name: string }>
 
-  return members
-    .map((member) => {
-      const group = groups.find((item) => item.id === member.group_id)
-      if (!group) return null
+  return memberships
+    .map((membership) => {
+      const member = members.find((item) => item.id === membership.member_id)
+      const group = groups.find((item) => item.id === membership.group_id)
+      if (!member || !group) return null
       return {
         memberId: member.id,
         memberName: member.display_name,
-        groupId: group.id,
+        groupId: membership.group_id,
         groupName: group.name,
       }
     })

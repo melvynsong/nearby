@@ -10,27 +10,29 @@ type GroupEntry = {
   groupName: string
 }
 
-type LoginMethod = 'personal' | 'group'
-
 type UserLoginRow = {
   id: string
   full_name: string | null
   phone_number: string | null
   phone_last4: string | null
-  has_personal_passcode: boolean | null
-  personal_passcode_hash: string | null
+  passcode_hash?: string | null
+  personal_passcode_hash?: string | null
   personal_passcode?: string | null
 }
 
-type GroupMemberLoginRow = {
-  id: string
-  display_name: string
-  group_id: string
+type MembershipRow = {
   user_id: string
-  phone_number?: string | null
-  users?: {
-    phone_number?: string | null
-  } | null
+  group_id: string
+  member_id: string | null
+  status?: string | null
+}
+
+function getDb() {
+  try {
+    return getServiceRoleSupabaseClient()
+  } catch {
+    return getServerSupabaseClient()
+  }
 }
 
 function verifyPasscode(passcode: string, stored: string): boolean {
@@ -50,8 +52,8 @@ function verifyPasscode(passcode: string, stored: string): boolean {
 
 function matchesPersonalPasscode(user: UserLoginRow, inputPasscode: string): boolean {
   const normalizedInput = inputPasscode.trim()
-  const hashed = user.personal_passcode_hash?.trim() ?? ''
-  const raw = user.personal_passcode?.trim() ?? ''
+  const hashed = (user.passcode_hash ?? user.personal_passcode_hash ?? '').trim()
+  const raw = (user.personal_passcode ?? '').trim()
 
   if (hashed) {
     try {
@@ -67,41 +69,68 @@ function matchesPersonalPasscode(user: UserLoginRow, inputPasscode: string): boo
 }
 
 async function buildGroupEntriesForUser(userId: string): Promise<GroupEntry[]> {
-  const supabase = getServerSupabaseClient()
+  const supabase = getDb()
+
+  const preferredMemberships = await supabase
+    .from('group_memberships')
+    .select('user_id, group_id, member_id, status')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+
+  let membershipsData = preferredMemberships.data as MembershipRow[] | null
+  let membershipsError = preferredMemberships.error as { code?: string; message?: string } | null
+
+  if (membershipsError?.code === '42703' || membershipsError?.code === 'PGRST204') {
+    const fallbackMemberships = await supabase
+      .from('group_memberships')
+      .select('user_id, group_id, member_id')
+      .eq('user_id', userId)
+
+    membershipsData = fallbackMemberships.data as MembershipRow[] | null
+    membershipsError = fallbackMemberships.error as { code?: string; message?: string } | null
+  }
+
+  if (membershipsError) {
+    throw membershipsError
+  }
+
+  const memberships = membershipsData ?? []
+  if (memberships.length === 0) return []
+
+  const memberIds = memberships.map((row) => row.member_id).filter(Boolean) as string[]
+  if (memberIds.length === 0) return []
 
   const membersResult = await supabase
     .from('members')
     .select('id, display_name, group_id')
-    .eq('user_id', userId)
+    .in('id', memberIds)
 
   if (membersResult.error) {
     throw membersResult.error
   }
 
-  const members = (membersResult.data ?? []) as Array<{ id: string; display_name: string; group_id: string }>
-  if (members.length === 0) return []
-
-  const groupIds = members.map((m) => m.group_id)
   const groupsResult = await supabase
     .from('groups')
     .select('id, name')
-    .in('id', groupIds)
+    .in('id', memberships.map((row) => row.group_id))
 
   if (groupsResult.error) {
     throw groupsResult.error
   }
 
+  const members = (membersResult.data ?? []) as Array<{ id: string; display_name: string; group_id: string }>
   const groups = (groupsResult.data ?? []) as Array<{ id: string; name: string }>
 
-  return members
-    .map((m) => {
-      const g = groups.find((x) => x.id === m.group_id)
-      if (!g) return null
+  return memberships
+    .map((membership) => {
+      const member = members.find((m) => m.id === membership.member_id)
+      const group = groups.find((g) => g.id === membership.group_id)
+      if (!member || !group) return null
       return {
-        memberId: m.id,
-        memberName: m.display_name,
-        groupId: g.id,
-        groupName: g.name,
+        memberId: member.id,
+        memberName: member.display_name,
+        groupId: group.id,
+        groupName: group.name,
       }
     })
     .filter(Boolean) as GroupEntry[]
@@ -110,251 +139,156 @@ async function buildGroupEntriesForUser(userId: string): Promise<GroupEntry[]> {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const phoneNumberInput = typeof body?.phoneNumber === 'string' ? body.phoneNumber.trim() : ''
-    const phoneNumber = normalizePhoneNumber(phoneNumberInput)
-    const method = (body?.method === 'personal' ? 'personal' : 'group') as LoginMethod
+    const phoneNumber = normalizePhoneNumber(typeof body?.phoneNumber === 'string' ? body.phoneNumber.trim() : '')
     const personalPasscode = typeof body?.personalPasscode === 'string' ? body.personalPasscode.trim() : ''
-    const groupPasscode = typeof body?.groupPasscode === 'string' ? body.groupPasscode.trim() : ''
-    const lookupLast4 = phoneLast4(phoneNumber)
 
-    console.log('[Login Attempt]', {
-      method,
+    console.log('[Auth]', {
+      event: 'login_attempt',
+      method: 'personal',
       phoneNumber,
-      last4: lookupLast4,
-      passcode: method === 'personal' ? personalPasscode : groupPasscode,
+      last4: phoneLast4(phoneNumber),
     })
 
     if (phoneNumber.length < 8) {
       return NextResponse.json({ ok: false, message: 'Enter your telephone number.' }, { status: 400 })
     }
 
-    let supabase = getServerSupabaseClient()
-    try {
-      supabase = getServiceRoleSupabaseClient()
-    } catch (error) {
-      console.error('[Nearby][API][Enter] service role unavailable:', error)
-      return NextResponse.json(
-        { ok: false, message: 'Server setup is incomplete. Please contact support.' },
-        { status: 500 },
-      )
+    if (!personalPasscode) {
+      return NextResponse.json({ ok: false, message: 'Enter your personal passcode.' }, { status: 400 })
     }
 
-    if (method === 'personal') {
-      if (!personalPasscode) {
-        return NextResponse.json({ ok: false, message: 'Enter your personal passcode.' }, { status: 400 })
-      }
+    const supabase = getDb()
+    const lookupLast4 = phoneLast4(phoneNumber)
 
-      const preferredUsersResult = await supabase
+    const preferredUsersResult = await supabase
+      .from('users')
+      .select('id, full_name, phone_number, phone_last4, passcode_hash, personal_passcode_hash, personal_passcode, created_at')
+      .eq('phone_last4', lookupLast4)
+      .order('created_at', { ascending: false })
+      .limit(10)
+
+    let usersData = preferredUsersResult.data as UserLoginRow[] | null
+    let usersError = preferredUsersResult.error as { code?: string; message?: string } | null
+
+    if (usersError?.code === '42703' || usersError?.code === 'PGRST204') {
+      const fallbackUsersResult = await supabase
         .from('users')
-        .select('id, full_name, phone_number, phone_last4, has_personal_passcode, personal_passcode_hash, personal_passcode, created_at')
+        .select('id, full_name, phone_number, phone_last4, personal_passcode_hash, personal_passcode, created_at')
         .eq('phone_last4', lookupLast4)
         .order('created_at', { ascending: false })
         .limit(10)
 
-      let usersData = preferredUsersResult.data as UserLoginRow[] | null
-      let usersError = preferredUsersResult.error as { code?: string; message?: string } | null
-
-      if (usersError?.code === '42703') {
-        const fallbackUsersResult = await supabase
-          .from('users')
-          .select('id, full_name, phone_number, phone_last4, has_personal_passcode, personal_passcode_hash, created_at')
-          .eq('phone_last4', lookupLast4)
-          .order('created_at', { ascending: false })
-          .limit(10)
-
-        usersData = fallbackUsersResult.data as UserLoginRow[] | null
-        usersError = fallbackUsersResult.error as { code?: string; message?: string } | null
-      }
-
-      if (usersError) {
-        console.error('[Login Error]', usersError)
-        return NextResponse.json({ ok: false, message: 'We could not complete this just now. Please try again.' }, { status: 500 })
-      }
-
-      const users = usersData ?? []
-      console.log('[DB Result]', {
-        method,
-        count: users.length,
-        users: users.map((user) => ({
-          id: user.id,
-          phone_matches: normalizePhoneNumber(user.phone_number ?? '') === phoneNumber,
-          phone_last4: user.phone_last4,
-          has_personal_passcode: user.has_personal_passcode,
-          has_hash: Boolean(user.personal_passcode_hash),
-          hash_format: user.personal_passcode_hash?.includes(':') ? 'pbkdf2' : user.personal_passcode_hash ? 'legacy-plain-or-unknown' : 'missing',
-          has_raw: Boolean(user.personal_passcode),
-        })),
-      })
-
-      const phoneMatchedUsers = users.filter(
-        (user) => normalizePhoneNumber(user.phone_number ?? '') === phoneNumber,
-      )
-
-      const hasAnyStoredPersonalPasscode = phoneMatchedUsers.some((user) => {
-        return Boolean(user.personal_passcode_hash?.trim() || user.personal_passcode?.trim())
-      })
-
-      if (phoneMatchedUsers.length > 0 && !hasAnyStoredPersonalPasscode) {
-        return NextResponse.json(
-          {
-            ok: false,
-            message: 'This account has not set a personal passcode yet. Sign in with your group passcode first, then set a personal passcode in Settings.',
-          },
-          { status: 403 },
-        )
-      }
-
-      const matchedUser = phoneMatchedUsers.find((user) => {
-        return matchesPersonalPasscode(user, personalPasscode)
-      })
-
-      if (!matchedUser) {
-        console.error('[Login Error]', {
-          message: 'Personal passcode mismatch',
-          phoneNumber,
-          last4: lookupLast4,
-          candidateUserIds: users.map((user) => user.id),
-        })
-        return NextResponse.json({ ok: false, message: 'Incorrect details.' }, { status: 401 })
-      }
-
-      const allGroups = await buildGroupEntriesForUser(matchedUser.id)
-
-      if (allGroups.length === 0) {
-        return NextResponse.json({
-          ok: true,
-          hasGroup: false,
-          register: {
-            userId: matchedUser.id,
-            userName: matchedUser.full_name ?? 'Member',
-            phone4: matchedUser.phone_last4 ?? lookupLast4,
-            phone: matchedUser.phone_number ?? phoneNumber,
-          },
-        })
-      }
-
-      const primary = allGroups[0]
-      return NextResponse.json({
-        ok: true,
-        hasGroup: true,
-        register: {
-          userId: matchedUser.id,
-          userName: matchedUser.full_name ?? primary.memberName,
-          phone4: matchedUser.phone_last4 ?? lookupLast4,
-          phone: matchedUser.phone_number ?? phoneNumber,
-        },
-        session: {
-          memberId: primary.memberId,
-          memberName: primary.memberName,
-          groupId: primary.groupId,
-          groupName: primary.groupName,
-          allGroups,
-        },
-      })
+      usersData = fallbackUsersResult.data as UserLoginRow[] | null
+      usersError = fallbackUsersResult.error as { code?: string; message?: string } | null
     }
 
-    if (!groupPasscode) {
-      return NextResponse.json({ ok: false, message: 'Enter your group passcode.' }, { status: 400 })
+    if (usersError) {
+      console.error('[Login Error]', usersError)
+      return NextResponse.json({ ok: false, message: 'We could not complete this just now. Please try again.' }, { status: 500 })
     }
 
-    const membersResult = await supabase
-      .from('members')
-      .select('id, display_name, group_id, user_id, phone_number, users ( phone_number )')
-      .eq('phone_last4', lookupLast4)
-
-    let membersData = membersResult.data as GroupMemberLoginRow[] | null
-    let membersError = membersResult.error as { code?: string; message?: string } | null
-
-    if (membersError?.code === '42703') {
-      const fallbackMembersResult = await supabase
-        .from('members')
-        .select('id, display_name, group_id, user_id, users ( phone_number )')
-        .eq('phone_last4', lookupLast4)
-
-      membersData = fallbackMembersResult.data as GroupMemberLoginRow[] | null
-      membersError = fallbackMembersResult.error as { code?: string; message?: string } | null
-    }
+    const users = usersData ?? []
+    const phoneMatchedUsers = users.filter(
+      (user) => normalizePhoneNumber(user.phone_number ?? '') === phoneNumber,
+    )
 
     console.log('[DB Result]', {
-      method,
-      count: (membersData ?? []).length,
-      members: (membersData ?? []).map((member) => ({
-        id: member.id,
-        user_id: member.user_id,
-        phone_matches: normalizePhoneNumber(member.phone_number ?? member.users?.phone_number ?? '') === phoneNumber,
+      method: 'personal',
+      count: phoneMatchedUsers.length,
+      users: phoneMatchedUsers.map((user) => ({
+        id: user.id,
+        phone_matches: true,
+        phone_last4: user.phone_last4,
+        has_passcode_hash: Boolean((user.passcode_hash ?? user.personal_passcode_hash ?? '').trim()),
+        has_raw: Boolean((user.personal_passcode ?? '').trim()),
       })),
     })
 
-    if (membersError) {
-      console.error('[Nearby][API][Enter] members lookup failed:', membersError)
-      return NextResponse.json({ ok: false, message: 'We could not complete this just now. Please try again.' }, { status: 500 })
+    const hasAnyStoredPersonalPasscode = phoneMatchedUsers.some((user) => {
+      return Boolean((user.passcode_hash ?? user.personal_passcode_hash ?? '').trim() || (user.personal_passcode ?? '').trim())
+    })
+
+    if (phoneMatchedUsers.length > 0 && !hasAnyStoredPersonalPasscode) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: 'This account has not set a personal passcode yet. Set it in Settings first.',
+        },
+        { status: 403 },
+      )
     }
 
-    const members = (membersData ?? [])
-      .filter((member) => normalizePhoneNumber(member.phone_number ?? member.users?.phone_number ?? '') === phoneNumber)
+    const matchedUser = phoneMatchedUsers.find((user) => matchesPersonalPasscode(user, personalPasscode))
 
-    if (members.length === 0) {
+    if (!matchedUser) {
+      console.error('[Auth]', {
+        event: 'login_failure',
+        reason: 'passcode_mismatch',
+        phoneNumber,
+        candidateUserIds: phoneMatchedUsers.map((user) => user.id),
+      })
       return NextResponse.json({ ok: false, message: 'Incorrect details.' }, { status: 401 })
     }
 
-    const groupIds = members.map((m) => m.group_id)
-    const groupsResult = await supabase
-      .from('groups')
-      .select('id, name, access_code')
-      .in('id', groupIds)
-
-    if (groupsResult.error) {
-      console.error('[Nearby][API][Enter] groups lookup failed:', groupsResult.error)
-      return NextResponse.json({ ok: false, message: 'We could not complete this just now. Please try again.' }, { status: 500 })
-    }
-
-    const groups = (groupsResult.data ?? []) as Array<{ id: string; name: string; access_code: string }>
-
-    let matched: { memberId: string; memberName: string; groupId: string; groupName: string; userId: string } | null = null
-    for (const member of members) {
-      const group = groups.find((g) => g.id === member.group_id)
-      if (!group || group.access_code !== groupPasscode) continue
-      matched = {
-        memberId: member.id,
-        memberName: member.display_name,
-        groupId: group.id,
-        groupName: group.name,
-        userId: member.user_id,
-      }
-      break
-    }
-
-    if (!matched) {
-      return NextResponse.json({ ok: false, message: 'Incorrect details.' }, { status: 401 })
-    }
-
-    const userResult = await supabase
+    const touchedOnboarded = await supabase
       .from('users')
-      .select('id, full_name, phone_number, phone_last4')
-      .eq('id', matched.userId)
-      .maybeSingle()
+      .update({
+        onboarded: true,
+        last_logged_in_at: new Date().toISOString(),
+      })
+      .eq('id', matchedUser.id)
 
-    const allGroups = await buildGroupEntriesForUser(matched.userId)
+    if (touchedOnboarded.error?.code === '42703' || touchedOnboarded.error?.code === 'PGRST204') {
+      await supabase
+        .from('users')
+        .update({ last_logged_in_at: new Date().toISOString() })
+        .eq('id', matchedUser.id)
+    }
+
+    const allGroups = await buildGroupEntriesForUser(matchedUser.id)
+
+    console.log('[Routing]', {
+      event: 'post_login_decision',
+      userId: matchedUser.id,
+      activeGroups: allGroups.length,
+      destination: allGroups.length > 0 ? 'nearby' : 'group_entry',
+    })
+
+    if (allGroups.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        hasGroup: false,
+        register: {
+          userId: matchedUser.id,
+          userName: matchedUser.full_name ?? 'Member',
+          phone4: matchedUser.phone_last4 ?? lookupLast4,
+          phone: matchedUser.phone_number ?? phoneNumber,
+        },
+      })
+    }
+
+    const primary = allGroups[0]
+    console.log('[Auth]', { event: 'login_success', userId: matchedUser.id })
 
     return NextResponse.json({
       ok: true,
       hasGroup: true,
       register: {
-        userId: matched.userId,
-        userName: userResult.data?.full_name ?? matched.memberName,
-        phone4: userResult.data?.phone_last4 ?? lookupLast4,
-        phone: userResult.data?.phone_number ?? phoneNumber,
+        userId: matchedUser.id,
+        userName: matchedUser.full_name ?? primary.memberName,
+        phone4: matchedUser.phone_last4 ?? lookupLast4,
+        phone: matchedUser.phone_number ?? phoneNumber,
       },
       session: {
-        memberId: matched.memberId,
-        memberName: matched.memberName,
-        groupId: matched.groupId,
-        groupName: matched.groupName,
+        memberId: primary.memberId,
+        memberName: primary.memberName,
+        groupId: primary.groupId,
+        groupName: primary.groupName,
         allGroups,
       },
     })
   } catch (error) {
-    console.error('[Nearby][API][Enter] Unexpected error:', error)
+    console.error('[Login Error]', error)
     return NextResponse.json(
       { ok: false, message: 'Something did not go through. Please try again.' },
       { status: 500 },

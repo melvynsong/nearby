@@ -18,16 +18,9 @@ export async function POST(request: NextRequest) {
 
     const { data: group, error } = await supabase
       .from('groups')
-      .select('id, name, access_code, created_by_user_id')
+      .select('id, name, access_code')
       .eq('id', groupId)
       .maybeSingle()
-
-    if (error?.message?.includes('created_by_user_id')) {
-      return NextResponse.json(
-        { ok: false, message: 'Invite details will be available after the latest group-owner migration.' },
-        { status: 412 },
-      )
-    }
 
     if (error || !group) {
       console.error('[Nearby][API][GroupInvite] Group lookup failed:', error)
@@ -37,9 +30,43 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!group.created_by_user_id || group.created_by_user_id !== requesterUserId) {
+    const preferredMembership = await supabase
+      .from('group_memberships')
+      .select('user_id, status')
+      .eq('group_id', groupId)
+      .eq('user_id', requesterUserId)
+      .eq('status', 'active')
+      .maybeSingle()
+
+    let activeMembership = preferredMembership.data as { user_id?: string; status?: string | null } | null
+    let membershipError = preferredMembership.error as { code?: string; message?: string } | null
+
+    if (membershipError?.code === '42703' || membershipError?.code === 'PGRST204') {
+      const fallbackMembership = await supabase
+        .from('group_memberships')
+        .select('user_id')
+        .eq('group_id', groupId)
+        .eq('user_id', requesterUserId)
+        .maybeSingle()
+
+      activeMembership = fallbackMembership.data as { user_id?: string } | null
+      membershipError = fallbackMembership.error as { code?: string; message?: string } | null
+      if (activeMembership && !('status' in activeMembership)) {
+        activeMembership = { ...activeMembership, status: 'active' }
+      }
+    }
+
+    if (membershipError) {
+      console.error('[Nearby][API][GroupInvite] Membership lookup failed:', membershipError)
       return NextResponse.json(
-        { ok: false, message: 'Only the group creator can access invite details.' },
+        { ok: false, message: 'We could not load invite details right now. Please try again.' },
+        { status: 500 },
+      )
+    }
+
+    if (!activeMembership?.user_id || activeMembership.status !== 'active') {
+      return NextResponse.json(
+        { ok: false, message: 'Only active members can access invite details.' },
         { status: 403 },
       )
     }

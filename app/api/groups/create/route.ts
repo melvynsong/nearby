@@ -16,6 +16,8 @@ export async function POST(request: NextRequest) {
     const requesterProfilePhone = typeof body?.requesterProfilePhone === 'string' ? body.requesterProfilePhone.trim() : ''
     const fallbackMemberName = typeof body?.fallbackMemberName === 'string' ? body.fallbackMemberName : ''
     const groupName = typeof body?.groupName === 'string' ? body.groupName.trim() : ''
+    const groupTitle = typeof body?.groupTitle === 'string' ? body.groupTitle.trim() : ''
+    const groupVisibility = body?.groupVisibility === 'private' ? 'private' : 'public'
     const passcode = typeof body?.passcode === 'string' ? body.passcode.trim() : ''
     const friends = Array.isArray(body?.friends) ? (body.friends as FriendInput[]) : []
 
@@ -215,14 +217,21 @@ export async function POST(request: NextRequest) {
     let groupId = ''
     const createWithOwner = await serverSupabase
       .from('groups')
-      .insert({ name: groupName, slug, access_code: passcode, created_by_user_id: creatorUserId })
+      .insert({
+        name: groupName,
+        title: groupTitle || groupName,
+        slug,
+        access_code: passcode,
+        visibility: groupVisibility,
+        created_by_user_id: creatorUserId,
+      })
       .select('id')
       .single()
 
     if (createWithOwner.error?.message?.includes('created_by_user_id')) {
       const fallbackCreate = await serverSupabase
         .from('groups')
-        .insert({ name: groupName, slug, access_code: passcode })
+        .insert({ name: groupName, title: groupTitle || groupName, slug, access_code: passcode, visibility: groupVisibility })
         .select('id')
         .single()
 
@@ -312,11 +321,30 @@ export async function POST(request: NextRequest) {
     }
 
     async function upsertMembership(userId: string, targetGroupId: string, memberId: string) {
-      const membership = await serverSupabase
+      const preferredMembership = await serverSupabase
         .from('group_memberships')
-        .upsert({ user_id: userId, group_id: targetGroupId, member_id: memberId }, { onConflict: 'user_id,group_id' })
+        .upsert({
+          user_id: userId,
+          group_id: targetGroupId,
+          member_id: memberId,
+          status: 'active',
+          group_onboarded: true,
+          requested_at: new Date().toISOString(),
+          approved_at: new Date().toISOString(),
+          approved_by: creatorUserId,
+        }, { onConflict: 'user_id,group_id' })
 
-      if (membership.error) throw membership.error
+      let membershipError = preferredMembership.error
+
+      if (membershipError?.code === '42703' || membershipError?.code === 'PGRST204') {
+        const fallbackMembership = await serverSupabase
+          .from('group_memberships')
+          .upsert({ user_id: userId, group_id: targetGroupId, member_id: memberId }, { onConflict: 'user_id,group_id' })
+
+        membershipError = fallbackMembership.error
+      }
+
+      if (membershipError) throw membershipError
     }
 
     try {

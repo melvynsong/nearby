@@ -22,13 +22,10 @@ type RegisterData = {
   phone: string
 }
 
-type LoginMethod = 'personal' | 'group'
-
 export default function Home() {
   const router = useRouter()
   const [phoneNumber, setPhoneNumber] = useState('')
   const [passcode, setPasscode] = useState('')
-  const [loginMethod, setLoginMethod] = useState<LoginMethod>('personal')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showLoginErrorCard, setShowLoginErrorCard] = useState(false)
@@ -194,7 +191,7 @@ export default function Home() {
     console.log('[Login Attempt]', {
       phoneNumber: normalizedPhoneNumber,
       passcode: normalizedPasscode,
-      method: loginMethod,
+      method: 'personal',
     })
 
     if (normalizedPhoneNumber.length < 8) {
@@ -203,7 +200,7 @@ export default function Home() {
     }
 
     if (!normalizedPasscode) {
-      setError(loginMethod === 'personal' ? 'Enter your personal passcode.' : 'Enter your group passcode.')
+      setError('Enter your personal passcode.')
       return
     }
 
@@ -215,9 +212,9 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phoneNumber: normalizedPhoneNumber,
-          method: loginMethod,
-          personalPasscode: loginMethod === 'personal' ? normalizedPasscode : '',
-          groupPasscode: loginMethod === 'group' ? normalizedPasscode : '',
+          method: 'personal',
+          personalPasscode: normalizedPasscode,
+          groupPasscode: '',
         }),
       })
 
@@ -316,27 +313,7 @@ export default function Home() {
 
             <div className="mt-5 space-y-4">
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-[#364158]">1. Sign in method</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setLoginMethod('personal')}
-                    className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${loginMethod === 'personal' ? 'border-[#1f355d] bg-[#ebf0f9] text-[#1f355d]' : 'border-[#d8deea] bg-white text-[#4d5871] hover:bg-[#f7f9fc]'}`}
-                  >
-                    Personal
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLoginMethod('group')}
-                    className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${loginMethod === 'group' ? 'border-[#1f355d] bg-[#ebf0f9] text-[#1f355d]' : 'border-[#d8deea] bg-white text-[#4d5871] hover:bg-[#f7f9fc]'}`}
-                  >
-                    Group
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-[#364158]">2. Telephone number</label>
+                <label className="mb-1.5 block text-sm font-medium text-[#364158]">1. Telephone number</label>
                 <input
                   type="tel"
                   inputMode="tel"
@@ -348,14 +325,12 @@ export default function Home() {
               </div>
 
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-[#364158]">
-                  3. {loginMethod === 'personal' ? 'Personal passcode' : 'Group passcode'}
-                </label>
+                <label className="mb-1.5 block text-sm font-medium text-[#364158]">2. Personal passcode</label>
                 <input
                   type="password"
                   value={passcode}
                   onChange={(e) => setPasscode(e.target.value)}
-                  placeholder={loginMethod === 'personal' ? 'Your personal passcode' : 'Your group passcode'}
+                  placeholder="Your personal passcode"
                   className="w-full rounded-xl border border-[#d8deea] px-4 py-2.5 text-sm outline-none transition focus:border-[#1f355d] focus:ring-2 focus:ring-[#e6edf9]"
                 />
               </div>

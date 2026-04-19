@@ -75,10 +75,7 @@ export async function resolveOnboardingState(): Promise<OnboardingState> {
   const { data: sessionData } = await supabase.auth.getSession()
   const accessToken = sessionData?.session?.access_token ?? null
 
-  const hasGroup = !!(
-    localStorage.getItem('nearby_session') ||
-    localStorage.getItem('nearby_register')
-  )
+  const hasGroup = !!localStorage.getItem('nearby_session')
 
   console.log('[Nearby][AuthGuard] resolveOnboardingState input:', {
     authUserId,

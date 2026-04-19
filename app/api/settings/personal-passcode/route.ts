@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
     const preferredUpdate = await userClient
       .from('users')
       .update({
+        passcode_hash: personal_passcode_hash,
         personal_passcode_hash,
         personal_passcode: passcode,
         has_personal_passcode: true,
@@ -71,6 +72,7 @@ export async function POST(request: NextRequest) {
       const fallbackUpdate = await userClient
         .from('users')
         .update({
+          passcode_hash: personal_passcode_hash,
           personal_passcode_hash,
           has_personal_passcode: true,
         })

@@ -213,6 +213,15 @@ export default function NearbyHome() {
     fetchCategories(initial.groupId)
   }, [router, fetchPlaces, fetchCategories])
 
+  useEffect(() => {
+    if (!activeGroup) return
+    void fetch(apiPath('/api/groups/membership/onboard'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ groupId: activeGroup.groupId, memberId: activeGroup.memberId }),
+    })
+  }, [activeGroup])
+
   // ── Group switching ───────────────────────────────────────────────────────────
 
   const switchGroup = (entry: GroupEntry) => {

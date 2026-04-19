@@ -60,33 +60,81 @@ function SettingsPage() {
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null)
   const [showPasscode, setShowPasscode] = useState(false)
   const [showGroupPasscode, setShowGroupPasscode] = useState(false)
-  const [groupMembersMap, setGroupMembersMap] = useState<Record<string, Array<{ id: string; display_name: string; has_personal_passcode: boolean }>>>({})
+  const [groupMembersMap, setGroupMembersMap] = useState<Record<string, Array<{ id: string; display_name: string; membership_status: string; group_onboarded: boolean }>>>({})
   const [deleteConfirmGroupId, setDeleteConfirmGroupId] = useState<string | null>(null)
   const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null)
   const [deleteGroupError, setDeleteGroupError] = useState('')
+  const [groupTitle, setGroupTitle] = useState('')
+  const [groupVisibility, setGroupVisibility] = useState<'public' | 'private'>('public')
+  const [groupSettingsSaving, setGroupSettingsSaving] = useState(false)
+  const [groupSettingsSaved, setGroupSettingsSaved] = useState(false)
+  const [groupSettingsError, setGroupSettingsError] = useState('')
+  const [pendingRequests, setPendingRequests] = useState<Array<{ id: string; name: string; requestedAt: string }>>([])
+  const [pendingActionLoadingId, setPendingActionLoadingId] = useState<string | null>(null)
+  const [categoryRefreshMessage, setCategoryRefreshMessage] = useState('')
   const loadGroupMembers = async (groupId: string) => {
     if (groupMembersMap[groupId]) return
     const { data, error } = await supabase
       .from('members')
-      .select('id, display_name, users ( has_personal_passcode )')
+      .select('id, display_name, user_id')
       .eq('group_id', groupId)
     if (error || !data) return
+
+    const userIds = (data as any[]).map((m) => m.user_id).filter(Boolean)
+    const preferredMemberships = await supabase
+      .from('group_memberships')
+      .select('user_id, status, group_onboarded')
+      .eq('group_id', groupId)
+      .in('user_id', userIds)
+
+    let memberships = (preferredMemberships.data ?? []) as Array<{ user_id: string; status?: string | null; group_onboarded?: boolean | null }>
+    if (preferredMemberships.error?.code === '42703' || preferredMemberships.error?.code === 'PGRST204') {
+      const fallbackMemberships = await supabase
+        .from('group_memberships')
+        .select('user_id')
+        .eq('group_id', groupId)
+        .in('user_id', userIds)
+      memberships = ((fallbackMemberships.data ?? []) as Array<{ user_id: string }>).map((row) => ({
+        user_id: row.user_id,
+        status: 'active',
+        group_onboarded: true,
+      }))
+    }
+
     setGroupMembersMap((prev) => ({
       ...prev,
       [groupId]: (data as any[]).map((m) => ({
         id: m.id as string,
         display_name: (m.display_name as string) ?? '?',
-        has_personal_passcode: Boolean((m.users as any)?.has_personal_passcode),
+        membership_status: memberships.find((row) => row.user_id === m.user_id)?.status ?? 'active',
+        group_onboarded: Boolean(memberships.find((row) => row.user_id === m.user_id)?.group_onboarded ?? true),
       })),
     }))
   }
 
-  const [isGroupCreator, setIsGroupCreator] = useState(false)
   const [inviteGroupName, setInviteGroupName] = useState('')
   const [inviteGroupPasscode, setInviteGroupPasscode] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
   const [inviteError, setInviteError] = useState('')
   const [loadError, setLoadError] = useState(false)
+
+  const loadGroupDetails = async (groupId: string, userId: string) => {
+    try {
+      const response = await fetch(apiPath('/api/settings/group-details'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId, requesterUserId: userId }),
+      })
+      const result = await response.json()
+      if (!response.ok || !result?.ok) return
+      setGroupTitle((result.group?.title as string) ?? '')
+      setGroupVisibility(((result.group?.visibility as 'public' | 'private') ?? 'public'))
+      setGroupPasscode((result.group?.passcode as string) ?? '')
+      setPendingRequests((result.pending as Array<{ id: string; name: string; requestedAt: string }>) ?? [])
+    } catch (error) {
+      console.error('[Nearby][Settings] Group details load failed:', error)
+    }
+  }
 
   const loadInviteDetails = async (groupId: string, userId: string) => {
     setInviteLoading(true)
@@ -198,34 +246,8 @@ function SettingsPage() {
 
       if (rawSession) {
         const parsed = JSON.parse(rawSession) as Session
-        const { data: group, error: groupError } = await supabase
-          .from('groups')
-          .select('created_by_user_id')
-          .eq('id', parsed.groupId)
-          .maybeSingle()
-
-        if (groupError?.message?.includes('created_by_user_id')) {
-          // Backward compatibility: if migration not applied yet, keep settings usable.
-          console.warn('[Nearby][Settings] groups.created_by_user_id missing. Falling back to non-creator mode.')
-          setIsGroupCreator(false)
-          return
-        }
-
-        if (groupError) {
-          console.error('[Nearby][Settings] Failed to load group ownership:', groupError)
-          // Do not block the whole settings screen when ownership lookup fails.
-          setIsGroupCreator(false)
-          return
-        }
-
-        const creatorId = (group as { created_by_user_id?: string | null } | null)?.created_by_user_id ?? null
-        const creator = Boolean(creatorId && creatorId === userId)
-        setIsGroupCreator(creator)
-        if (creator) {
-          await loadInviteDetails(parsed.groupId, userId)
-        }
-      } else {
-        setIsGroupCreator(false)
+        await loadInviteDetails(parsed.groupId, userId)
+        await loadGroupDetails(parsed.groupId, userId)
       }
     } catch (error) {
       console.error('[Nearby][Settings] Failed to load:', error)
@@ -396,6 +418,92 @@ function SettingsPage() {
     }
   }
 
+  const saveGroupSettings = async () => {
+    if (!session || !profile) return
+    setGroupSettingsError('')
+    setGroupSettingsSaved(false)
+    if (!session.groupName.trim() || !groupPasscode.trim()) {
+      setGroupSettingsError('Group name and passcode are required.')
+      return
+    }
+
+    setGroupSettingsSaving(true)
+    try {
+      const response = await fetch(apiPath('/api/settings/group-details'), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groupId: session.groupId,
+          requesterUserId: profile.userId,
+          name: session.groupName,
+          title: groupTitle,
+          passcode: groupPasscode,
+          visibility: groupVisibility,
+        }),
+      })
+
+      const result = await response.json()
+      if (!response.ok || !result?.ok) {
+        setGroupSettingsError(result?.message ?? 'Could not update group settings.')
+        return
+      }
+
+      setInviteGroupPasscode(groupPasscode)
+      setGroupSettingsSaved(true)
+    } catch (error) {
+      console.error('[Nearby][Settings] Group settings update failed:', error)
+      setGroupSettingsError('Could not update group settings.')
+    } finally {
+      setGroupSettingsSaving(false)
+    }
+  }
+
+  const decidePending = async (membershipId: string, decision: 'approve' | 'reject') => {
+    if (!session || !profile) return
+    setPendingActionLoadingId(membershipId)
+    try {
+      const response = await fetch(apiPath('/api/groups/membership/decision'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          membershipId,
+          groupId: session.groupId,
+          requesterUserId: profile.userId,
+          decision,
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok || !result?.ok) return
+      setPendingRequests((prev) => prev.filter((p) => p.id !== membershipId))
+      await loadGroupMembers(session.groupId)
+    } catch (error) {
+      console.error('[Nearby][Settings] Pending decision failed:', error)
+    } finally {
+      setPendingActionLoadingId(null)
+    }
+  }
+
+  const refreshGroupCategories = async () => {
+    if (!session || !profile) return
+    setCategoryRefreshMessage('')
+    try {
+      const response = await fetch(apiPath('/api/settings/group-categories-refresh'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId: session.groupId, requesterUserId: profile.userId }),
+      })
+      const result = await response.json()
+      if (!response.ok || !result?.ok) {
+        setCategoryRefreshMessage(result?.message ?? 'Could not refresh categories.')
+        return
+      }
+      setCategoryRefreshMessage(`Categories refreshed. Removed ${result.removed ?? 0} unused categories.`)
+    } catch (error) {
+      console.error('[Nearby][Settings] Category refresh failed:', error)
+      setCategoryRefreshMessage('Could not refresh categories.')
+    }
+  }
+
   const deleteGroup = async (group: { groupId: string; memberId: string; groupName: string }) => {
     setDeleteGroupError('')
     setDeletingGroupId(group.groupId)
@@ -561,7 +669,12 @@ function SettingsPage() {
                         onClick={() => {
                           setExpandedGroupId((prev) => {
                             const next = prev === group.groupId ? null : group.groupId
-                            if (next) void loadGroupMembers(next)
+                            if (next) {
+                              void loadGroupMembers(next)
+                              if (isCurrentGroup && profile) {
+                                void loadGroupDetails(next, profile.userId)
+                              }
+                            }
                             return next
                           })
                         }}
@@ -578,8 +691,34 @@ function SettingsPage() {
                         <>
                         <div className="border-t border-[#e6ebf4] px-4 py-3">
                           {isCurrentGroup ? (
-                            isGroupCreator ? (
                               <>
+                                <label className="mb-1.5 block text-sm font-medium text-neutral-700">Group title</label>
+                                <input
+                                  type="text"
+                                  value={groupTitle}
+                                  onChange={(e) => setGroupTitle(e.target.value)}
+                                  placeholder="Optional short title"
+                                  className="w-full rounded-xl border border-[#d6ddeb] px-4 py-2.5 text-sm outline-none transition focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9]"
+                                />
+
+                                <label className="mt-3 mb-1.5 block text-sm font-medium text-neutral-700">Visibility</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setGroupVisibility('public')}
+                                    className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${groupVisibility === 'public' ? 'border-[#1f355d] bg-[#ebf0f9] text-[#1f355d]' : 'border-[#d8deea] bg-white text-[#4d5871] hover:bg-[#f7f9fc]'}`}
+                                  >
+                                    Public
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setGroupVisibility('private')}
+                                    className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${groupVisibility === 'private' ? 'border-[#1f355d] bg-[#ebf0f9] text-[#1f355d]' : 'border-[#d8deea] bg-white text-[#4d5871] hover:bg-[#f7f9fc]'}`}
+                                  >
+                                    Private
+                                  </button>
+                                </div>
+
                                 <label className="mb-1.5 block text-sm font-medium text-neutral-700">New group passcode</label>
                                 <div className="relative">
                                   <input
@@ -603,6 +742,8 @@ function SettingsPage() {
 
                                 {groupPasscodeError && <p className="mt-3 text-sm text-amber-700">{groupPasscodeError}</p>}
                                 {groupPasscodeSaved && <p className="mt-3 text-sm text-[#1f355d]">Group passcode updated.</p>}
+                                {groupSettingsError && <p className="mt-3 text-sm text-amber-700">{groupSettingsError}</p>}
+                                {groupSettingsSaved && <p className="mt-2 text-sm text-[#1f355d]">Group settings updated.</p>}
 
                                 <button
                                   onClick={saveGroupPasscode}
@@ -611,6 +752,22 @@ function SettingsPage() {
                                 >
                                   {groupPasscodeSaving ? 'Saving...' : 'Save group passcode'}
                                 </button>
+
+                                <button
+                                  onClick={saveGroupSettings}
+                                  disabled={groupSettingsSaving}
+                                  className="mt-2 w-full rounded-xl border border-[#1f355d] bg-white px-4 py-3 text-sm font-medium text-[#1f355d] transition-colors hover:bg-[#eef3fb] disabled:opacity-50"
+                                >
+                                  {groupSettingsSaving ? 'Saving...' : 'Save group settings'}
+                                </button>
+
+                                <button
+                                  onClick={refreshGroupCategories}
+                                  className="mt-2 w-full rounded-xl border border-[#d6ddeb] bg-white px-4 py-3 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+                                >
+                                  Refresh dish categories
+                                </button>
+                                {categoryRefreshMessage && <p className="mt-2 text-xs text-neutral-600">{categoryRefreshMessage}</p>}
 
                                 <div className="mt-4">
                                   {inviteLoading ? (
@@ -630,12 +787,40 @@ function SettingsPage() {
                                     />
                                   )}
                                 </div>
+
+                                {groupVisibility === 'private' && (
+                                  <div className="mt-4 rounded-xl border border-[#dfe5f0] bg-[#fafbfd] p-3">
+                                    <p className="text-sm font-semibold text-neutral-900">Pending requests</p>
+                                    {pendingRequests.length === 0 ? (
+                                      <p className="mt-1 text-xs text-neutral-500">No pending requests.</p>
+                                    ) : (
+                                      <div className="mt-2 space-y-2">
+                                        {pendingRequests.map((pending) => (
+                                          <div key={pending.id} className="rounded-lg border border-[#e6ebf4] bg-white p-2">
+                                            <p className="text-sm text-neutral-800">{pending.name}</p>
+                                            <div className="mt-2 flex gap-2">
+                                              <button
+                                                onClick={() => void decidePending(pending.id, 'approve')}
+                                                disabled={pendingActionLoadingId === pending.id}
+                                                className="flex-1 rounded-lg bg-[#1f355d] px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+                                              >
+                                                Approve
+                                              </button>
+                                              <button
+                                                onClick={() => void decidePending(pending.id, 'reject')}
+                                                disabled={pendingActionLoadingId === pending.id}
+                                                className="flex-1 rounded-lg border border-[#d6ddeb] bg-white px-3 py-2 text-xs font-medium text-neutral-700 disabled:opacity-50"
+                                              >
+                                                Reject
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                               </>
-                            ) : (
-                              <p className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
-                                Only the group creator can change the group passcode.
-                              </p>
-                            )
                           ) : (
                             <button
                               type="button"
@@ -697,16 +882,18 @@ function SettingsPage() {
                                   <div key={m.id} className="flex flex-col items-center gap-1 shrink-0">
                                     <div
                                       className={`h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold ${
-                                        m.has_personal_passcode
+                                        m.membership_status === 'active'
                                           ? 'bg-[#d4edde] text-[#1a6e3a]'
+                                          : m.membership_status === 'pending'
+                                          ? 'bg-[#fff3cd] text-[#8a6d1f]'
                                           : 'bg-[#e5e8ed] text-[#7a8398]'
                                       }`}
-                                      title={m.has_personal_passcode ? `${m.display_name} — Joined` : `${m.display_name} — Invited`}
+                                      title={`${m.display_name} — ${m.membership_status === 'active' ? (m.group_onboarded ? 'Active' : 'Not onboarded') : m.membership_status === 'pending' ? 'Pending' : 'Removed'}`}
                                     >
                                       {m.display_name.slice(0, 2).toUpperCase()}
                                     </div>
-                                    <span className={`text-[10px] leading-none font-medium ${m.has_personal_passcode ? 'text-[#1a6e3a]' : 'text-[#9aa0b0]'}`}>
-                                      {m.has_personal_passcode ? 'Joined' : 'Invited'}
+                                    <span className={`text-[10px] leading-none font-medium ${m.membership_status === 'active' ? 'text-[#1a6e3a]' : m.membership_status === 'pending' ? 'text-[#8a6d1f]' : 'text-[#9aa0b0]'}`}>
+                                      {m.membership_status === 'active' ? (m.group_onboarded ? 'Active' : 'Not onboarded') : m.membership_status === 'pending' ? 'Pending' : 'Removed'}
                                     </span>
                                   </div>
                                 ))}
