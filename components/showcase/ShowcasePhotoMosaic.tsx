@@ -43,6 +43,7 @@ function MosaicTile({ item, rank, displayRank }: TileProps) {
   const photo = item.photos[0] ?? null
   const url = mapsUrl(item)
   const isTop3 = (displayRank ?? rank) <= 3
+  const showDistance = displayRank != null
 
   return (
     <a
@@ -79,19 +80,32 @@ function MosaicTile({ item, rank, displayRank }: TileProps) {
         <p className={`font-semibold text-white leading-tight drop-shadow-sm line-clamp-1 ${isTop3 ? 'text-sm sm:text-base' : 'text-xs sm:text-sm'}`}>
           {item.placeName}
         </p>
-        <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
-          {item.googleRating != null && (
-            <span className="text-[10px] sm:text-xs font-semibold text-amber-400">
-              ★ {item.googleRating.toFixed(1)}
-              {item.googleRatingCount != null && (
-                <span className="font-normal text-white/50 ml-0.5">({item.googleRatingCount.toLocaleString()})</span>
-              )}
-            </span>
-          )}
-          {item.distanceKm != null && (
-            <span className="text-[10px] text-white/65">{formatDistanceKm(item.distanceKm)}</span>
-          )}
-        </div>
+        {!showDistance && item.googleRating != null && (
+          <div className="mt-1 text-[10px] sm:text-xs font-semibold text-amber-300">
+            ★ {item.googleRating.toFixed(1)}
+          </div>
+        )}
+      </div>
+
+      {/* Premium mode-specific badge (bottom-right) */}
+      <div className="absolute bottom-2 right-2 pointer-events-none">
+        {showDistance ? (
+          <span className="inline-flex items-center gap-1 rounded-full border border-cyan-200/45 bg-cyan-950/55 px-2.5 py-1 text-[10px] font-semibold text-cyan-100 backdrop-blur-sm shadow-md">
+            <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
+              <circle cx="12" cy="9" r="2.5" />
+            </svg>
+            {item.distanceKm != null ? formatDistanceKm(item.distanceKm) : 'No distance'}
+          </span>
+        ) : item.googleRating != null ? (
+          <span className="inline-flex items-center gap-1 rounded-full border border-amber-200/50 bg-black/45 px-2.5 py-1 text-[10px] font-semibold text-amber-200 backdrop-blur-sm shadow-md">
+            <span>★</span>
+            <span>{item.googleRating.toFixed(1)}</span>
+            {item.googleRatingCount != null && (
+              <span className="text-[9px] font-medium text-amber-100/80">({item.googleRatingCount.toLocaleString()})</span>
+            )}
+          </span>
+        ) : null}
       </div>
 
       {/* Hover / tap overlay — additional info */}
@@ -143,13 +157,17 @@ function MosaicTile({ item, rank, displayRank }: TileProps) {
 export default function ShowcasePhotoMosaic({ items, locationMode }: Props) {
   if (!items.length) return null
 
-  let displayItems = items
+  let displayItems = [...items].sort((a, b) => a.rank - b.rank)
   const displayRankMap = new Map<string, number>()
 
   if (locationMode) {
     // Sort by distance (nearest first) and assign display ranks
-    const itemsWithDistance = items.filter((item) => item.distanceKm != null)
-    const itemsWithoutDistance = items.filter((item) => item.distanceKm == null)
+    const itemsWithDistance = items
+      .filter((item) => item.distanceKm != null)
+      .sort((a, b) => (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY))
+    const itemsWithoutDistance = items
+      .filter((item) => item.distanceKm == null)
+      .sort((a, b) => a.rank - b.rank)
 
     displayItems = [...itemsWithDistance, ...itemsWithoutDistance]
     displayItems.forEach((item, idx) => {
