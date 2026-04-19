@@ -97,12 +97,14 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
   const [notFound, setNotFound] = useState(false)
   const [descriptionsLoaded, setDescriptionsLoaded] = useState(false)
   const [locationModeEnabled, setLocationModeEnabledState] = useState(() => {
-    // Initialize from localStorage if available
+    // First-time default: Location mode ON. Persisted user choice overrides this.
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem(LOCATION_MODE_KEY)
-      return stored === 'true'
+      if (stored === 'true') return true
+      if (stored === 'false') return false
+      return true
     }
-    return false
+    return true
   })
 
   // Persist location mode to localStorage whenever it changes
@@ -177,6 +179,18 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
   }, [items.length, descriptionsLoaded])
 
   const { showPrompt, locating, locationPref, handleAllow, handleDecline } = useShowcaseLocation(items, setItems)
+
+  // If location is unavailable/declined, gracefully fall back to ratings mode.
+  useEffect(() => {
+    if (!locationModeEnabled) return
+    if (typeof navigator !== 'undefined' && !navigator.geolocation) {
+      setLocationModeEnabled(false)
+      return
+    }
+    if (locationPref === 'declined') {
+      setLocationModeEnabled(false)
+    }
+  }, [locationModeEnabled, locationPref, setLocationModeEnabled])
 
   const enableLocationMode = useCallback(() => {
     if (locationPref !== 'allowed') {
