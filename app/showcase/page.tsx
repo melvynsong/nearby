@@ -1,6 +1,7 @@
 import Link from 'next/link'
-import ShowcaseOptionCard, { type ShowcaseCardProps } from '@/components/showcase/ShowcaseOptionCard'
-import { getAvailableShowcases, getShowcaseListLimit, type ShowcaseConfig } from '@/lib/showcase-config'
+import ShowcaseCardsSection from '@/components/showcase/ShowcaseCardsSection'
+import { type ShowcaseCardProps } from '@/components/showcase/ShowcaseOptionCard'
+import { getAvailableShowcases, getCategoryScoreMode, getShowcaseListLimit, type ShowcaseConfig } from '@/lib/showcase-config'
 import { withBasePath } from '@/lib/base-path'
 import { getServerSupabaseClient } from '@/lib/server-supabase'
 
@@ -11,6 +12,7 @@ export const metadata = {
 
 export default async function DiscoverPage() {
   let showcases: ShowcaseConfig[] = []
+  const scoreMode = getCategoryScoreMode()
 
   try {
     const db = getServerSupabaseClient()
@@ -65,19 +67,20 @@ export default async function DiscoverPage() {
           </div>
         )}
 
-        {showcases.map((config, i) => {
-          // Serialize only plain fields — functions cannot cross server→client boundary
-          const cardProps: ShowcaseCardProps = {
+        <ShowcaseCardsSection
+          scoreMode={scoreMode}
+          cards={showcases.map((config): ShowcaseCardProps => ({
+            // Serialize only plain fields — functions cannot cross server→client boundary
             key: config.key,
             title: config.title,
             editorialDescription: config.editorialDescription,
+            categoryUsageCount: config.categoryUsageCount,
             tagline: config.tagline,
             heroGradientFrom: config.heroGradientFrom,
             heroGradientTo: config.heroGradientTo,
             emoji: config.emoji,
-          }
-          return <ShowcaseOptionCard key={config.key} config={cardProps} index={i} />
-        })}
+          }))}
+        />
       </section>
 
       {/* Footer CTA */}

@@ -8,6 +8,7 @@ export type ShowcaseCardProps = {
   key: string
   title: string
   editorialDescription: string
+  categoryUsageCount?: number
   tagline: string
   heroGradientFrom: string
   heroGradientTo: string
