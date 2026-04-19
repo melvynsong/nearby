@@ -23,6 +23,15 @@ export type ShowcaseConfig = {
   maxItemsToShow: number
 }
 
+function resolveShowcaseListLimit(): number {
+  const raw = (process.env.SHOWCASE_LIST_LIMIT ?? '').trim()
+  const parsed = Number.parseInt(raw, 10)
+  if (Number.isFinite(parsed) && parsed >= 3 && parsed <= 9) {
+    return parsed
+  }
+  return 7
+}
+
 const VISUAL_PRESETS: Array<{
   emoji: string
   heroGradientFrom: string
@@ -108,7 +117,7 @@ function computeCategoryScore(
 
 export async function getAvailableShowcases(
   db: SupabaseClient,
-  limit = 5,
+  limit = resolveShowcaseListLimit(),
 ): Promise<ShowcaseConfig[]> {
   const { data: categoryRows, error: categoryErr } = await db
     .from('food_categories')
@@ -206,10 +215,14 @@ export async function getShowcaseConfigByKey(
   db: SupabaseClient,
   key: string,
 ): Promise<ShowcaseConfig | null> {
-  const showcases = await getAvailableShowcases(db, 5)
+  const showcases = await getAvailableShowcases(db, 9)
   return showcases.find((showcase) => showcase.key === key) ?? null
 }
 
 export function getCategoryScoreMode(): CategoryScoreMode {
   return resolveCategoryScoreMode()
+}
+
+export function getShowcaseListLimit(): number {
+  return resolveShowcaseListLimit()
 }

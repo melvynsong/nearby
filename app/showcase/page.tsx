@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import ShowcaseOptionCard, { type ShowcaseCardProps } from '@/components/showcase/ShowcaseOptionCard'
-import { getAvailableShowcases, type ShowcaseConfig } from '@/lib/showcase-config'
+import { getAvailableShowcases, getShowcaseListLimit, type ShowcaseConfig } from '@/lib/showcase-config'
 import { withBasePath } from '@/lib/base-path'
 import { getServerSupabaseClient } from '@/lib/server-supabase'
 
@@ -14,7 +14,7 @@ export default async function DiscoverPage() {
 
   try {
     const db = getServerSupabaseClient()
-    showcases = await getAvailableShowcases(db, 5)
+    showcases = await getAvailableShowcases(db, getShowcaseListLimit())
   } catch (err) {
     console.error('[Showcase] Failed to build showcase list:', err)
   }

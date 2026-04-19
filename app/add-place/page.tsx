@@ -171,13 +171,10 @@ function AddPlaceInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // ── Single source of truth for page mode — resolved ONCE on mount
-  const _modeRef = useRef<PlacePageMode | null>(null)
-  if (_modeRef.current === null) {
-    _modeRef.current = resolvePlaceMode(searchParams)
-  }
-  const mode        = _modeRef.current.mode
-  const editPlaceId = _modeRef.current.editPlaceId
+  // ── Page mode derived from current URL (reactive across edit/create navigation)
+  const resolvedMode = resolvePlaceMode(searchParams)
+  const mode = resolvedMode.mode
+  const editPlaceId = resolvedMode.editPlaceId
 
   const [session] = useState<Session | null>(() => {
     if (typeof window === 'undefined') return null
@@ -223,8 +220,8 @@ function AddPlaceInner() {
   const [error, setError] = useState('')
   const [showSaveErrorCard, setShowSaveErrorCard] = useState(false)
   const [showDishSavedToast, setShowDishSavedToast] = useState(false)
-  // loadingEdit starts true in edit mode to prevent empty-form flash before hydration
-  const [loadingEdit, setLoadingEdit] = useState(mode === 'edit')
+  // loadingEdit is controlled by mode transitions and edit-data hydration
+  const [loadingEdit, setLoadingEdit] = useState(false)
   const [editDenied, setEditDenied] = useState(false)
 
   // ── Group selection (add to multiple groups)
@@ -240,7 +237,7 @@ function AddPlaceInner() {
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const galleryInputRef = useRef<HTMLInputElement>(null)
 
-  // ── Mode resolution logging + guard (runs once on mount)
+  // ── Mode resolution logging + create-mode reset
   useEffect(() => {
     const rawSearch = typeof window !== 'undefined' ? window.location.search : ''
     console.log('[PlaceModeResolve]', {
@@ -261,6 +258,7 @@ function AddPlaceInner() {
       } else {
         // Clean state on create mode entry
         console.log('[PlaceCreateEntry]', { confirmed_clean_state: true })
+        if (previewUrl) URL.revokeObjectURL(previewUrl)
         setSelectedFile(null)
         setPreviewUrl(null)
         setImageTransform(DEFAULT_IMAGE_TRANSFORM)
@@ -278,11 +276,15 @@ function AddPlaceInner() {
         setNote('')
         setError('')
         setShowSaveErrorCard(false)
+        setShowDishSavedToast(false)
+        setEditDenied(false)
+        setLoadingEdit(false)
       }
+    } else {
+      // Entering edit mode should show loading shell until data is hydrated
+      setLoadingEdit(true)
     }
-  // mode and editPlaceId are stable consts derived once — this must run only on mount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [mode, editPlaceId, previewUrl, router])
 
   // ── Load user groups for group selection
   useEffect(() => {
@@ -292,20 +294,33 @@ function AddPlaceInner() {
     const loadUserGroups = async () => {
       setLoadingGroups(true)
       try {
+        // session.memberId is a member id; resolve user_id first, then load all memberships.
+        const { data: memberRow } = await supabase
+          .from('members')
+          .select('user_id')
+          .eq('id', session.memberId)
+          .maybeSingle()
+
+        const userId = memberRow?.user_id
+        if (!userId) return
+
         const { data } = await supabase
           .from('members')
           .select('group_id, groups(id, name)')
-          .eq('user_id', session?.memberId)
+          .eq('user_id', userId)
 
         if (mounted && data && Array.isArray(data)) {
           const groups = data
-            .filter((m: any) => m.groups && typeof m.groups === 'object' && !Array.isArray(m.groups))
-            .map((m: any) => m.groups as { id: string; name: string })
+            .map((m: any) => {
+              const groupRow = Array.isArray(m.groups) ? m.groups[0] : m.groups
+              if (!groupRow || typeof groupRow !== 'object') return null
+              return { id: String(groupRow.id), name: String(groupRow.name) }
+            })
+            .filter((g): g is { id: string; name: string } => Boolean(g?.id && g?.name))
           setUserGroups(groups)
-          // Initialize with current group if in create mode
-          if (mode === 'create') {
-            setSelectedGroupIds([session.groupId])
-          }
+
+          // Default selected group(s): current group for create/edit entry.
+          setSelectedGroupIds([session.groupId])
         }
       } catch (err) {
         console.error('[AddPlace] Failed to load user groups:', err)
@@ -698,7 +713,8 @@ function AddPlaceInner() {
           body.append('imageTransform', JSON.stringify(transformToSave))
           body.append('file', selectedFile, selectedFile.name)
         }
-        if (editPlaceId) {
+        // In edit mode, update the current group's record; for other selected groups, create new records.
+        if (editPlaceId && groupId === session.groupId) {
           body.append('editPlaceId', editPlaceId)
         }
         if (aiResult.analysisEventId) {

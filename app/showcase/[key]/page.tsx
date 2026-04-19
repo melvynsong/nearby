@@ -178,13 +178,24 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
 
   const { showPrompt, locating, locationPref, handleAllow, handleDecline } = useShowcaseLocation(items, setItems)
 
-  const handleToggleLocationMode = useCallback(() => {
-    setLocationModeEnabled((prev) => !prev)
-    if (!locationModeEnabled && locationPref !== 'allowed') {
-      // Prompt for location if not already allowed
+  const enableLocationMode = useCallback(() => {
+    if (locationPref !== 'allowed') {
       handleAllow()
     }
-  }, [locationModeEnabled, locationPref, handleAllow])
+    setLocationModeEnabled(true)
+  }, [locationPref, handleAllow, setLocationModeEnabled])
+
+  const disableLocationMode = useCallback(() => {
+    setLocationModeEnabled(false)
+  }, [setLocationModeEnabled])
+
+  const handleToggleLocationMode = useCallback(() => {
+    if (locationModeEnabled) {
+      disableLocationMode()
+      return
+    }
+    enableLocationMode()
+  }, [locationModeEnabled, disableLocationMode, enableLocationMode])
 
   if (notFound) {
     return (
@@ -257,22 +268,20 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
             </div>
 
             {/* Location awareness toggle */}
-            {items.some((item) => item.distanceKm != null) && (
-              <button
-                onClick={handleToggleLocationMode}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  locationModeEnabled
-                    ? 'bg-amber-400/20 text-amber-200 border border-amber-400/40'
-                    : 'bg-white/10 text-white/70 border border-white/10 hover:bg-white/15'
-                }`}
-              >
-                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
-                  <circle cx="12" cy="9" r="2.5" />
-                </svg>
-                {locationModeEnabled ? 'Location On' : 'Location Off'}
-              </button>
-            )}
+            <button
+              onClick={handleToggleLocationMode}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                locationModeEnabled
+                  ? 'bg-amber-400/20 text-amber-200 border border-amber-400/40'
+                  : 'bg-white/10 text-white/70 border border-white/10 hover:bg-white/15'
+              }`}
+            >
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
+                <circle cx="12" cy="9" r="2.5" />
+              </svg>
+              {locationModeEnabled ? 'Location On' : 'Location Off'}
+            </button>
           </div>
         )}
       </div>
@@ -338,12 +347,55 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
 
       {/* Full-width photo mosaic collage */}
       {!loading && !error && items.length > 0 && (
-        <ShowcasePhotoMosaic items={items} />
+        <ShowcasePhotoMosaic items={items} locationMode={locationModeEnabled} />
+      )}
+
+      {/* Premium floating location overlay */}
+      {!loading && !error && items.length > 0 && (
+        <div className="fixed bottom-4 left-1/2 z-40 w-[min(94vw,640px)] -translate-x-1/2 px-1">
+          <div className="rounded-2xl border border-white/40 bg-white/70 px-3 py-3 shadow-[0_12px_40px_rgba(10,20,40,0.18)] backdrop-blur-md">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-neutral-500">Display Mode</p>
+                <p className="text-xs text-neutral-700">
+                  {locationModeEnabled
+                    ? 'Closest places become larger tiles.'
+                    : 'Top-rated places stay larger by rating rank.'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={enableLocationMode}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    locationModeEnabled
+                      ? 'bg-[#1f355d] text-white'
+                      : 'border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-100'
+                  }`}
+                >
+                  Use Location
+                </button>
+                <button
+                  onClick={disableLocationMode}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    !locationModeEnabled
+                      ? 'bg-[#1f355d] text-white'
+                      : 'border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-100'
+                  }`}
+                >
+                  Use Ratings
+                </button>
+              </div>
+            </div>
+            {locating && (
+              <p className="mt-2 text-[11px] text-neutral-500">Finding your location...</p>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Footer attribution */}
       {!loading && items.length > 0 && (
-        <div className="px-5 pt-5 pb-8 text-center">
+        <div className="px-5 pt-5 pb-28 text-center">
           <p className="text-[11px] text-neutral-400">
             Ranked by Google rating · community saves · and recency.
           </p>
