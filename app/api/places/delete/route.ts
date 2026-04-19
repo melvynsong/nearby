@@ -24,16 +24,21 @@ export async function POST(request: NextRequest) {
 
     const db = getDb()
 
-    // Verify the caller added at least one recommendation for this place in this group
-    const { data: rec, error: recError } = await db
+    // Verify the caller added at least one recommendation for this place in this group.
+    // Use limit(1) instead of maybeSingle() because older data can legitimately contain
+    // multiple recommendation rows for the same member/place/group combination.
+    const ownerRecommendationResult = await db
       .from('recommendations')
       .select('id')
       .eq('place_id', placeId)
       .eq('member_id', memberId)
       .eq('group_id', groupId)
-      .maybeSingle()
+      .order('created_at', { ascending: false })
+      .limit(1)
 
-    if (recError || !rec?.id) {
+    const ownerRecommendation = (ownerRecommendationResult.data ?? [])[0] ?? null
+
+    if (ownerRecommendationResult.error || !ownerRecommendation?.id) {
       return NextResponse.json({ ok: false, message: 'You cannot delete this place.' }, { status: 403 })
     }
 
