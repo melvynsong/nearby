@@ -44,6 +44,7 @@ function useShowcaseLocation(
   const [locationPref, setLocationPref] = useState<LocationPref>(null)
   const [locating, setLocating] = useState(false)
   const [showPrompt, setShowPrompt] = useState(false)
+  const [locationResolved, setLocationResolved] = useState(false)
 
   useEffect(() => {
     const stored = localStorage.getItem(LOCATION_PREF_KEY) as LocationPref
@@ -57,15 +58,23 @@ function useShowcaseLocation(
   }, [items.length])
 
   const requestLocation = useCallback((currentItems: ShowcaseItem[], cb: (i: ShowcaseItem[]) => void) => {
-    if (!navigator.geolocation) return
+    if (!navigator.geolocation) {
+      setLocationResolved(false)
+      return
+    }
     setLocating(true)
+    setLocationResolved(false)
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const updated = attachDistances(currentItems, pos.coords.latitude, pos.coords.longitude)
         cb(updated)
+        setLocationResolved(updated.some((item) => item.distanceKm != null))
         setLocating(false)
       },
-      () => setLocating(false),
+      () => {
+        setLocationResolved(false)
+        setLocating(false)
+      },
       { enableHighAccuracy: false, timeout: 6000, maximumAge: 120000 },
     )
   }, [])
@@ -83,7 +92,7 @@ function useShowcaseLocation(
     setShowPrompt(false)
   }, [])
 
-  return { showPrompt, locating, locationPref, handleAllow, handleDecline }
+  return { showPrompt, locating, locationPref, locationResolved, handleAllow, handleDecline }
 }
 
 export default function ShowcasePage({ params }: { params: Promise<{ key: string }> }) {
@@ -178,7 +187,7 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
       .catch(() => {}) // Non-fatal
   }, [items.length, descriptionsLoaded])
 
-  const { showPrompt, locating, locationPref, handleAllow, handleDecline } = useShowcaseLocation(items, setItems)
+  const { showPrompt, locating, locationPref, locationResolved, handleAllow, handleDecline } = useShowcaseLocation(items, setItems)
 
   // If location is unavailable/declined, gracefully fall back to ratings mode.
   useEffect(() => {
@@ -189,8 +198,12 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
     }
     if (locationPref === 'declined') {
       setLocationModeEnabled(false)
+      return
     }
-  }, [locationModeEnabled, locationPref, setLocationModeEnabled])
+    if (locationPref === 'allowed' && !locating && !locationResolved) {
+      setLocationModeEnabled(false)
+    }
+  }, [locationModeEnabled, locationPref, locating, locationResolved, setLocationModeEnabled])
 
   const enableLocationMode = useCallback(() => {
     if (locationPref !== 'allowed') {

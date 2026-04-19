@@ -36,14 +36,16 @@ type TileProps = {
   item: ShowcaseItem
   rank: number
   displayRank?: number
+  locationMode?: boolean
 }
 
-function MosaicTile({ item, rank, displayRank }: TileProps) {
+function MosaicTile({ item, rank, displayRank, locationMode = false }: TileProps) {
   const [overlayVisible, setOverlayVisible] = useState(false)
   const photo = item.photos[0] ?? null
   const url = mapsUrl(item)
   const isTop3 = (displayRank ?? rank) <= 3
-  const showDistance = displayRank != null
+  const showDistance = locationMode && displayRank != null && item.distanceKm != null
+  const showRating = !locationMode && item.googleRating != null
 
   return (
     <a
@@ -82,21 +84,8 @@ function MosaicTile({ item, rank, displayRank }: TileProps) {
         </p>
       </div>
 
-      {/* Google rating badge (always visible, bottom-right) */}
-      {item.googleRating != null && (
-        <div className="absolute bottom-2 right-2 pointer-events-none">
-          <span className="inline-flex items-center gap-1 rounded-full border border-amber-200/50 bg-black/45 px-2.5 py-1 text-[10px] font-semibold text-amber-200 backdrop-blur-sm shadow-md">
-            <span>★</span>
-            <span>{item.googleRating.toFixed(1)}</span>
-            {item.googleRatingCount != null && (
-              <span className="text-[9px] font-medium text-amber-100/80">({item.googleRatingCount.toLocaleString()})</span>
-            )}
-          </span>
-        </div>
-      )}
-
-      {/* Premium mode-specific badge (bottom-right) */}
-      <div className={`absolute bottom-2 pointer-events-none ${showDistance ? 'left-2' : 'right-2'}`}>
+      {/* Active display-mode badge (bottom-right only) */}
+      <div className="absolute bottom-2 right-2 pointer-events-none">
         {showDistance ? (
           <span className="inline-flex items-center gap-1 rounded-full border border-cyan-200/45 bg-cyan-950/55 px-2.5 py-1 text-[10px] font-semibold text-cyan-100 backdrop-blur-sm shadow-md">
             <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2">
@@ -104,6 +93,14 @@ function MosaicTile({ item, rank, displayRank }: TileProps) {
               <circle cx="12" cy="9" r="2.5" />
             </svg>
             {item.distanceKm != null ? formatDistanceKm(item.distanceKm) : 'No distance'}
+          </span>
+        ) : showRating ? (
+          <span className="inline-flex items-center gap-1 rounded-full border border-amber-200/50 bg-black/45 px-2.5 py-1 text-[10px] font-semibold text-amber-200 backdrop-blur-sm shadow-md">
+            <span aria-hidden>★</span>
+            <span>{item.googleRating?.toFixed(1)}</span>
+            {item.googleRatingCount != null && (
+              <span className="text-[9px] font-medium text-amber-100/80">({item.googleRatingCount.toLocaleString()})</span>
+            )}
           </span>
         ) : null}
       </div>
@@ -186,6 +183,7 @@ export default function ShowcasePhotoMosaic({ items, locationMode }: Props) {
           item={item}
           rank={item.rank}
           displayRank={locationMode ? displayRankMap.get(item.placeId) : undefined}
+          locationMode={locationMode}
         />
       ))}
     </div>
