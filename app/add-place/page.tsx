@@ -368,9 +368,27 @@ function AddPlaceInner() {
         }
         setFlowState('analysis_success')
 
+        // Hydrate existing photo so the edit form shows it
+        const photoUrls = Array.isArray(result.photoUrls) ? result.photoUrls as string[] : []
+        const imageTransforms = (result.imageTransforms ?? {}) as Record<string, unknown>
+        if (photoUrls.length > 0) {
+          const firstPhoto = photoUrls[0]
+          setPreviewUrl(firstPhoto)
+          try {
+            const { DEFAULT_IMAGE_TRANSFORM: DEF, coerceTransform } = await import('@/lib/image-transform')
+            const raw = imageTransforms[firstPhoto]
+            const savedTransform = raw ? coerceTransform(raw) : DEF
+            setImageTransform(savedTransform)
+            setIsTransformCustomized(JSON.stringify(savedTransform) !== JSON.stringify(DEF))
+          } catch {
+            // non-fatal — transform stays default
+          }
+        }
+
         console.log('[EditCategoryHydrate]', {
           place_id: editPlaceId,
           final_selected_category: dishName || '(none)',
+          photo_urls_count: photoUrls.length,
         })
         console.log('[PlaceEditLoad]', { place_id: editPlaceId, data_loaded: true })
       } catch (loadError) {

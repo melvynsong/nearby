@@ -21,7 +21,7 @@ export default function ShowcaseOptionCard({ config, index }: Props) {
 
   return (
     <Link
-      href={withBasePath(`/discover/showcase/${config.key}`)}
+      href={withBasePath(`/showcase/${config.key}`)}
       className="group relative flex flex-col justify-end overflow-hidden rounded-3xl min-h-[280px] cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-white/50"
       style={{
         animationDelay: `${delay}ms`,

@@ -12,7 +12,7 @@ export default function DiscoverPage() {
   const showcases = getAvailableShowcases()
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-white">
+    <main className="min-h-screen bg-[#0f1f3d] text-white">
 
       {/* Header */}
       <header className="px-5 pt-10 pb-2">
@@ -67,7 +67,7 @@ export default function DiscoverPage() {
       </section>
 
       {/* Footer CTA */}
-      <section className="border-t border-white/5 px-5 py-8 text-center">
+      <section className="border-t border-white/10 px-5 py-8 text-center">
         <p className="text-xs text-white/30">
           Want your favourite spot in the next showcase?
         </p>

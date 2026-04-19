@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
 
     const placeResult = await db
       .from('places')
-      .select('id, google_place_id, name, formatted_address, lat, lng, photo_urls')
+      .select('id, google_place_id, name, formatted_address, lat, lng, photo_urls, image_transforms')
       .eq('id', placeId)
       .maybeSingle()
 
@@ -125,6 +125,8 @@ export async function POST(request: NextRequest) {
       recommendationId: ownerRecommendation.id,
       note: ownerRecommendation.note ?? '',
       dishName: categoryName,
+      photoUrls: placeResult.data.photo_urls ?? [],
+      imageTransforms: placeResult.data.image_transforms ?? {},
       place: {
         google_place_id: placeResult.data.google_place_id,
         name: placeResult.data.name,

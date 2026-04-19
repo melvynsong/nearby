@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import ErrorState from '@/components/ErrorState'
 import BrandMark from '@/components/BrandMark'
@@ -362,6 +363,32 @@ export default function Home() {
             </div>
           </section>
         )}
+
+
+        {/* Showcase teaser */}
+        <Link
+          href={withBasePath('/showcase')}
+          className="group mt-6 w-full flex items-center gap-3 rounded-2xl overflow-hidden cursor-pointer"
+          style={{ background: 'linear-gradient(135deg, #1f355d 0%, #2d4f8a 100%)' }}
+        >
+          <div className="flex-1 px-4 py-4">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-white/50 mb-1">
+              Singapore Food
+            </p>
+            <p className="text-sm font-bold text-white leading-snug">
+              Explore Top Dishes
+            </p>
+            <p className="text-[11px] text-white/60 mt-0.5">
+              Community-curated food showcases
+            </p>
+          </div>
+          <div className="flex items-center gap-1 pr-4 text-white/50 group-hover:text-white/80 transition-colors">
+            <span className="text-2xl">🍜</span>
+            <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </div>
+        </Link>
       </div>
     </main>
   )
