@@ -16,11 +16,11 @@ export async function GET(
       return NextResponse.json({ ok: false, message: 'Showcase not found.' }, { status: 404 })
     }
 
-    // 1. Get place_ids linked to this category
+    // 1. Get place_ids linked to this aggregated category name across groups.
     const { data: pcRows, error: pcErr } = await db
       .from('place_categories')
       .select('place_id, category_id')
-      .eq('category_id', config.categoryId)
+      .in('category_id', config.categoryIds)
 
     if (pcErr) {
       console.error('[Showcase] place_categories fetch error:', pcErr)
@@ -53,19 +53,27 @@ export async function GET(
       return NextResponse.json({ ok: false, message: 'Data fetch failed.' }, { status: 500 })
     }
 
-    // 3. Count recommendations (saves) per place
+    // 3. Count unique member recommendations (saves) per place.
     const { data: recCounts, error: recErr } = await db
       .from('recommendations')
-      .select('place_id')
+      .select('place_id, member_id')
       .in('place_id', placeIds)
 
     if (recErr) {
       console.warn('[Showcase] recommendations count fetch failed (non-fatal):', recErr)
     }
 
+    const saveTokensByPlaceId = new Map<string, Set<string>>()
+    for (const row of (recCounts ?? []) as { place_id: string; member_id: string | null }[]) {
+      const token = row.member_id ? `${row.place_id}:${row.member_id}` : row.place_id
+      const tokens = saveTokensByPlaceId.get(row.place_id) ?? new Set<string>()
+      tokens.add(token)
+      saveTokensByPlaceId.set(row.place_id, tokens)
+    }
+
     const savesByPlaceId = new Map<string, number>()
-    for (const row of (recCounts ?? []) as { place_id: string }[]) {
-      savesByPlaceId.set(row.place_id, (savesByPlaceId.get(row.place_id) ?? 0) + 1)
+    for (const [placeId, tokens] of saveTokensByPlaceId.entries()) {
+      savesByPlaceId.set(placeId, tokens.size)
     }
 
     // 4. Assemble raw rows

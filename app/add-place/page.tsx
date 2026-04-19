@@ -703,8 +703,8 @@ function AddPlaceInner() {
     setSaving(true)
 
     try {
-      // Save to each selected group
-      for (const groupId of groupsToSave) {
+      // Save to each selected group, but only upload the photo once.
+      for (const [index, groupId] of groupsToSave.entries()) {
         const body = new FormData()
         body.append('memberId', session.memberId)
         body.append('groupId', groupId)
@@ -718,7 +718,7 @@ function AddPlaceInner() {
         body.append('dishName', dishName)
         if (note.trim()) body.append('note', note.trim())
 
-        if (selectedFile) {
+        if (selectedFile && index === 0) {
           const transformToSave = isTransformCustomized ? imageTransform : DEFAULT_IMAGE_TRANSFORM
           body.append('imageTransform', JSON.stringify(transformToSave))
           body.append('file', selectedFile, selectedFile.name)

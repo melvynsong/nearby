@@ -5,11 +5,11 @@ export type CategoryScoreMode = 'places' | 'recommendations' | 'blended'
 
 type CategoryRow = { id: string; name: string }
 type PlaceCategoryRow = { category_id: string; place_id: string }
-type RecommendationRow = { place_id: string }
+type RecommendationRow = { place_id: string; member_id: string | null }
 
 export type ShowcaseConfig = {
   key: string
-  categoryId: string
+  categoryIds: string[]
   categoryUsageCount: number
   title: string
   fullTitle: (count: number) => string
@@ -45,6 +45,18 @@ const VISUAL_PRESETS: Array<{
   { emoji: '🍗', heroGradientFrom: '#7f1d1d', heroGradientTo: '#991b1b' },
 ]
 
+function hashString(input: string): string {
+  let hash = 0
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 31 + input.charCodeAt(i)) >>> 0
+  }
+  return hash.toString(16).padStart(8, '0').slice(0, 8)
+}
+
+function normalizeCategoryName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
 function slugifyCategoryName(name: string): string {
   const normalized = name
     .toLowerCase()
@@ -64,15 +76,15 @@ function selectVisualPreset(categoryId: string): (typeof VISUAL_PRESETS)[number]
   return VISUAL_PRESETS[hash % VISUAL_PRESETS.length]
 }
 
-function buildShowcaseConfig(category: CategoryRow, usageCount: number): ShowcaseConfig {
-  const visual = selectVisualPreset(category.id)
-  const slug = slugifyCategoryName(category.name)
-  const key = `${slug}-${category.id.slice(0, 8)}`
-  const title = category.name.trim()
+function buildShowcaseConfig(title: string, categoryIds: string[], usageCount: number): ShowcaseConfig {
+  const identity = categoryIds[0] ?? title
+  const visual = selectVisualPreset(identity)
+  const slug = slugifyCategoryName(title)
+  const key = `${slug}-${hashString(normalizeCategoryName(title))}`
 
   return {
     key,
-    categoryId: category.id,
+    categoryIds,
     categoryUsageCount: usageCount,
     title,
     fullTitle: (count: number) => `Top ${count} ${title} Spots`,
@@ -115,10 +127,16 @@ function computeCategoryScore(
   return placeCount
 }
 
-export async function getAvailableShowcases(
-  db: SupabaseClient,
-  limit = resolveShowcaseListLimit(),
-): Promise<ShowcaseConfig[]> {
+type CategoryAggregate = {
+  normalizedName: string
+  title: string
+  categoryIds: string[]
+  usageCount: number
+  recommendationCount: number
+  score: number
+}
+
+async function getAggregatedShowcases(db: SupabaseClient): Promise<CategoryAggregate[]> {
   const { data: categoryRows, error: categoryErr } = await db
     .from('food_categories')
     .select('id, name')
@@ -137,34 +155,61 @@ export async function getAvailableShowcases(
 
   const { data: recommendationRows, error: recommendationErr } = await db
     .from('recommendations')
-    .select('place_id')
+    .select('place_id, member_id')
 
   if (recommendationErr) {
     throw new Error(`Failed to load recommendations: ${recommendationErr.message}`)
   }
 
   const mode = resolveCategoryScoreMode()
+  const categoryKeyById = new Map<string, string>()
+  const groupedCategories = new Map<string, { title: string; categoryIds: string[] }>()
 
-  const uniquePlacesByCategory = new Map<string, Set<string>>()
-  const categoryIdsByPlace = new Map<string, Set<string>>()
+  for (const category of (categoryRows ?? []) as CategoryRow[]) {
+    const normalizedName = normalizeCategoryName(category.name)
+    categoryKeyById.set(category.id, normalizedName)
 
-  for (const row of (placeCategoryRows ?? []) as PlaceCategoryRow[]) {
-    const places = uniquePlacesByCategory.get(row.category_id) ?? new Set<string>()
-    places.add(row.place_id)
-    uniquePlacesByCategory.set(row.category_id, places)
+    const existing = groupedCategories.get(normalizedName)
+    if (existing) {
+      existing.categoryIds.push(category.id)
+      continue
+    }
 
-    const categoryIds = categoryIdsByPlace.get(row.place_id) ?? new Set<string>()
-    categoryIds.add(row.category_id)
-    categoryIdsByPlace.set(row.place_id, categoryIds)
+    groupedCategories.set(normalizedName, {
+      title: category.name.trim(),
+      categoryIds: [category.id],
+    })
   }
 
-  const recommendationsByCategory = new Map<string, number>()
-  for (const row of (recommendationRows ?? []) as RecommendationRow[]) {
-    const categoryIds = categoryIdsByPlace.get(row.place_id)
-    if (!categoryIds) continue
+  const uniquePlacesByCategory = new Map<string, Set<string>>()
+  const categoryKeysByPlace = new Map<string, Set<string>>()
 
-    for (const categoryId of categoryIds) {
-      recommendationsByCategory.set(categoryId, (recommendationsByCategory.get(categoryId) ?? 0) + 1)
+  for (const row of (placeCategoryRows ?? []) as PlaceCategoryRow[]) {
+    const categoryKey = categoryKeyById.get(row.category_id)
+    if (!categoryKey) continue
+
+    const places = uniquePlacesByCategory.get(categoryKey) ?? new Set<string>()
+    places.add(row.place_id)
+    uniquePlacesByCategory.set(categoryKey, places)
+
+    const categoryKeys = categoryKeysByPlace.get(row.place_id) ?? new Set<string>()
+    categoryKeys.add(categoryKey)
+    categoryKeysByPlace.set(row.place_id, categoryKeys)
+  }
+
+  const recommendationsByCategory = new Map<string, Set<string>>()
+  for (const row of (recommendationRows ?? []) as RecommendationRow[]) {
+    const categoryKeys = categoryKeysByPlace.get(row.place_id)
+    if (!categoryKeys) continue
+
+    const recommendationToken = row.member_id
+      ? `${row.place_id}:${row.member_id}`
+      : row.place_id
+
+    for (const categoryKey of categoryKeys) {
+      const tokens = recommendationsByCategory.get(categoryKey) ?? new Set<string>()
+      tokens.add(recommendationToken)
+      recommendationsByCategory.set(categoryKey, tokens)
     }
   }
 
@@ -173,14 +218,14 @@ export async function getAvailableShowcases(
     1,
   )
   const maxRecommendationCount = Math.max(
-    ...[...recommendationsByCategory.values()],
+    ...[...recommendationsByCategory.values()].map((tokens) => tokens.size),
     1,
   )
 
-  return (categoryRows ?? [])
-    .map((category: CategoryRow) => {
-      const placeCount = uniquePlacesByCategory.get(category.id)?.size ?? 0
-      const recommendationCount = recommendationsByCategory.get(category.id) ?? 0
+  return [...groupedCategories.entries()]
+    .map(([normalizedName, group]) => {
+      const placeCount = uniquePlacesByCategory.get(normalizedName)?.size ?? 0
+      const recommendationCount = recommendationsByCategory.get(normalizedName)?.size ?? 0
       const score = computeCategoryScore(
         mode,
         placeCount,
@@ -190,7 +235,9 @@ export async function getAvailableShowcases(
       )
 
       return {
-        category,
+        normalizedName,
+        title: group.title,
+        categoryIds: group.categoryIds,
         usageCount: placeCount,
         recommendationCount,
         score,
@@ -205,17 +252,27 @@ export async function getAvailableShowcases(
       if (b.score !== a.score) return b.score - a.score
       if (b.recommendationCount !== a.recommendationCount) return b.recommendationCount - a.recommendationCount
       if (b.usageCount !== a.usageCount) return b.usageCount - a.usageCount
-      return a.category.name.localeCompare(b.category.name)
+      return a.title.localeCompare(b.title)
     })
+}
+
+export async function getAvailableShowcases(
+  db: SupabaseClient,
+  limit = resolveShowcaseListLimit(),
+): Promise<ShowcaseConfig[]> {
+  const aggregates = await getAggregatedShowcases(db)
+
+  return aggregates
     .slice(0, limit)
-    .map((entry) => buildShowcaseConfig(entry.category, entry.usageCount))
+    .map((entry) => buildShowcaseConfig(entry.title, entry.categoryIds, entry.usageCount))
 }
 
 export async function getShowcaseConfigByKey(
   db: SupabaseClient,
   key: string,
 ): Promise<ShowcaseConfig | null> {
-  const showcases = await getAvailableShowcases(db, 9)
+  const showcases = (await getAggregatedShowcases(db))
+    .map((entry) => buildShowcaseConfig(entry.title, entry.categoryIds, entry.usageCount))
   return showcases.find((showcase) => showcase.key === key) ?? null
 }
 

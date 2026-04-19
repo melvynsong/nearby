@@ -268,13 +268,35 @@ export async function POST(request: NextRequest) {
         action: 'save_edit',
       })
     } else {
-      const insertRecommendationResult = await db.from('recommendations').insert({
-        group_id: groupId,
-        member_id: memberId,
-        place_id: placeId,
-        note: note || null,
-      })
-      recErr = insertRecommendationResult.error as { message?: string } | null
+      const existingRecommendationResult = await db
+        .from('recommendations')
+        .select('id')
+        .eq('group_id', groupId)
+        .eq('member_id', memberId)
+        .eq('place_id', placeId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      const existingRecommendation = (existingRecommendationResult.data ?? [])[0] ?? null
+
+      if (existingRecommendationResult.error) {
+        recErr = existingRecommendationResult.error as { message?: string } | null
+      } else if (existingRecommendation?.id) {
+        const updateExistingRecommendationResult = await db
+          .from('recommendations')
+          .update({ note: note || null })
+          .eq('id', existingRecommendation.id)
+
+        recErr = updateExistingRecommendationResult.error as { message?: string } | null
+      } else {
+        const insertRecommendationResult = await db.from('recommendations').insert({
+          group_id: groupId,
+          member_id: memberId,
+          place_id: placeId,
+          note: note || null,
+        })
+        recErr = insertRecommendationResult.error as { message?: string } | null
+      }
     }
 
     if (recErr) {
