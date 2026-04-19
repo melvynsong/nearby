@@ -47,9 +47,19 @@ type GroupInvite = {
   id: string
   phoneNumber: string
   status: 'invited' | 'joined'
+  displayStatus: 'invited' | 'onboarded' | 'joined_group'
   name: string
   createdAt: string
   joinedAt: string | null
+}
+
+type PeopleRow = {
+  key: string
+  userId: string | null
+  name: string
+  phoneNumber: string
+  role: 'owner' | 'member' | null
+  status: 'Invited' | 'Onboarded' | 'Joined Group'
 }
 
 function SettingsPage() {
@@ -73,8 +83,10 @@ function SettingsPage() {
 
   const [groupName, setGroupName] = useState('')
   const [groupPasscode, setGroupPasscode] = useState('')
+  const [savedGroupPasscode, setSavedGroupPasscode] = useState('')
   const [groupVisibility, setGroupVisibility] = useState<'public' | 'private'>('public')
   const [groupSettingsSaving, setGroupSettingsSaving] = useState(false)
+  const [visibilitySaving, setVisibilitySaving] = useState(false)
   const [groupSettingsError, setGroupSettingsError] = useState('')
   const [groupSettingsMessage, setGroupSettingsMessage] = useState('')
   const [groupInfoEditing, setGroupInfoEditing] = useState(false)
@@ -94,6 +106,61 @@ function SettingsPage() {
     [groupName, groupPasscode, session?.groupName],
   )
 
+  const unifiedPeopleRows = useMemo<PeopleRow[]>(() => {
+    const rowsByPhone = new Map<string, PeopleRow>()
+    const rowsByUserId = new Map<string, PeopleRow>()
+
+    for (const person of people) {
+      const row: PeopleRow = {
+        key: `member-${person.userId}`,
+        userId: person.userId,
+        name: person.name || person.phoneNumber || 'Member',
+        phoneNumber: person.phoneNumber || '',
+        role: person.role,
+        status: 'Joined Group',
+      }
+      rowsByUserId.set(person.userId, row)
+      if (person.phoneNumber) rowsByPhone.set(person.phoneNumber, row)
+    }
+
+    for (const invite of invites) {
+      const existingByPhone = rowsByPhone.get(invite.phoneNumber)
+      if (existingByPhone) {
+        existingByPhone.status = 'Joined Group'
+        continue
+      }
+
+      const nextStatus: PeopleRow['status'] =
+        invite.displayStatus === 'joined_group'
+          ? 'Joined Group'
+          : invite.displayStatus === 'onboarded'
+          ? 'Onboarded'
+          : 'Invited'
+
+      const row: PeopleRow = {
+        key: `invite-${invite.id}`,
+        userId: null,
+        name: invite.name || invite.phoneNumber,
+        phoneNumber: invite.phoneNumber,
+        role: null,
+        status: nextStatus,
+      }
+      rowsByPhone.set(invite.phoneNumber, row)
+    }
+
+    const rows = Array.from(new Set([...rowsByUserId.values(), ...rowsByPhone.values()]))
+    return rows.sort((a, b) => {
+      const rank = (status: PeopleRow['status']) => {
+        if (status === 'Joined Group') return 0
+        if (status === 'Onboarded') return 1
+        return 2
+      }
+      const diff = rank(a.status) - rank(b.status)
+      if (diff !== 0) return diff
+      return a.name.localeCompare(b.name)
+    })
+  }, [people, invites])
+
   const loadGroupDetails = async (groupId: string, userId: string) => {
     const response = await fetch(apiPath('/api/settings/group-details'), {
       method: 'POST',
@@ -107,10 +174,13 @@ function SettingsPage() {
     }
 
     const nextName = (result.group?.name as string) ?? ''
+    const nextPasscode = (result.group?.passcode as string) ?? ''
     setGroupName(nextName)
-    setGroupPasscode((result.group?.passcode as string) ?? '')
+    setGroupPasscode(nextPasscode)
+    setSavedGroupPasscode(nextPasscode)
     setGroupVisibility(((result.group?.visibility as 'public' | 'private') ?? 'public'))
     setRequesterRole(((result.requesterRole as 'owner' | 'member') ?? 'member'))
+
     setPeople(((result.members as GroupPerson[]) ?? []).map((person) => ({
       userId: person.userId,
       memberId: person.memberId,
@@ -118,10 +188,17 @@ function SettingsPage() {
       phoneNumber: person.phoneNumber,
       role: person.role === 'owner' ? 'owner' : 'member',
     })))
+
     setInvites(((result.invites as GroupInvite[]) ?? []).map((invite) => ({
       id: invite.id,
       phoneNumber: invite.phoneNumber,
       status: invite.status === 'joined' ? 'joined' : 'invited',
+      displayStatus:
+        invite.displayStatus === 'joined_group'
+          ? 'joined_group'
+          : invite.displayStatus === 'onboarded'
+          ? 'onboarded'
+          : 'invited',
       name: invite.name ?? '',
       createdAt: invite.createdAt,
       joinedAt: invite.joinedAt,
@@ -329,14 +406,14 @@ function SettingsPage() {
     }
   }
 
-  const saveGroupSettings = async () => {
+  const saveGroupName = async () => {
     if (!session || !profile) return
 
     setGroupSettingsError('')
     setGroupSettingsMessage('')
 
     const nextName = groupName.trim()
-    const nextPasscode = groupPasscode.trim()
+    const nextPasscode = savedGroupPasscode.trim()
 
     if (!nextName || !nextPasscode) {
       setGroupSettingsError('Group name and passcode are required.')
@@ -364,14 +441,99 @@ function SettingsPage() {
         return
       }
 
-      setGroupSettingsMessage('Group settings updated.')
+      setGroupSettingsMessage('Group name updated.')
       setGroupInfoEditing(false)
       await loadGroupDetails(session.groupId, profile.userId)
     } catch (error) {
-      console.error('[Nearby][Settings] Group settings update failed:', error)
+      console.error('[Nearby][Settings] Group name update failed:', error)
       setGroupSettingsError('Could not update group settings.')
     } finally {
       setGroupSettingsSaving(false)
+    }
+  }
+
+  const saveGroupPasscode = async () => {
+    if (!session || !profile) return
+
+    const nextName = groupName.trim() || session.groupName
+    const nextPasscode = groupPasscode.trim()
+    if (!nextPasscode) {
+      setGroupSettingsError('Passcode is required.')
+      return
+    }
+
+    setGroupSettingsSaving(true)
+    setGroupSettingsError('')
+    setGroupSettingsMessage('')
+    try {
+      const response = await fetch(apiPath('/api/settings/group-details'), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groupId: session.groupId,
+          requesterUserId: profile.userId,
+          name: nextName,
+          title: nextName,
+          passcode: nextPasscode,
+          visibility: groupVisibility,
+        }),
+      })
+
+      const result = await response.json()
+      if (!response.ok || !result?.ok) {
+        setGroupSettingsError(result?.message ?? 'Could not update passcode.')
+        return
+      }
+
+      setSavedGroupPasscode(nextPasscode)
+      setGroupSettingsMessage('Passcode updated.')
+      await loadGroupDetails(session.groupId, profile.userId)
+    } catch (error) {
+      console.error('[Nearby][Settings] Passcode update failed:', error)
+      setGroupSettingsError('Could not update passcode.')
+    } finally {
+      setGroupSettingsSaving(false)
+    }
+  }
+
+  const updateVisibility = async (nextVisibility: 'public' | 'private') => {
+    if (!session || !profile || nextVisibility === groupVisibility) return
+
+    const previousVisibility = groupVisibility
+    setGroupVisibility(nextVisibility)
+    setVisibilitySaving(true)
+    setGroupSettingsError('')
+    setGroupSettingsMessage('')
+
+    try {
+      const nextName = groupName.trim() || session.groupName
+      const nextPasscode = savedGroupPasscode.trim() || groupPasscode.trim()
+      const response = await fetch(apiPath('/api/settings/group-details'), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groupId: session.groupId,
+          requesterUserId: profile.userId,
+          name: nextName,
+          title: nextName,
+          passcode: nextPasscode,
+          visibility: nextVisibility,
+        }),
+      })
+
+      const result = await response.json()
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.message ?? 'Could not update visibility.')
+      }
+
+      setGroupSettingsMessage('Visibility updated.')
+      await loadGroupDetails(session.groupId, profile.userId)
+    } catch (error) {
+      console.error('[Nearby][Settings] Visibility update failed:', error)
+      setGroupVisibility(previousVisibility)
+      setGroupSettingsError('Could not update visibility.')
+    } finally {
+      setVisibilitySaving(false)
     }
   }
 
@@ -399,25 +561,31 @@ function SettingsPage() {
     }
   }
 
-  const copyGroupPasscode = async () => {
-    setGroupSettingsError('')
-    try {
-      await navigator.clipboard.writeText(groupPasscode.trim())
-      setGroupSettingsMessage('Passcode copied.')
-    } catch (error) {
-      console.error('[Nearby][Settings] Copy passcode failed:', error)
-      setGroupSettingsError('Could not copy passcode right now.')
-    }
-  }
+  const shareInvitation = async () => {
+    if (!session) return
 
-  const copyInviteMessage = async () => {
     setGroupSettingsError('')
+    setGroupSettingsMessage('')
     try {
+      if (navigator.share) {
+        await navigator.share({ text: groupInviteMessage })
+        console.log('[ShareInvitation]', {
+          group_id: session.groupId,
+          share_method: 'native_share',
+        })
+        setGroupSettingsMessage('Invitation ready to share')
+        return
+      }
+
       await navigator.clipboard.writeText(groupInviteMessage)
-      setGroupSettingsMessage('Invite message copied.')
+      console.log('[ShareInvitation]', {
+        group_id: session.groupId,
+        share_method: 'clipboard',
+      })
+      setGroupSettingsMessage('Invitation copied')
     } catch (error) {
-      console.error('[Nearby][Settings] Copy invite failed:', error)
-      setGroupSettingsError('Could not copy invite right now.')
+      console.error('[Nearby][Settings] Share invitation failed:', error)
+      setGroupSettingsError('Could not prepare invitation right now.')
     }
   }
 
@@ -452,28 +620,13 @@ function SettingsPage() {
       }
 
       setInvitePhoneNumber('')
-      setGroupSettingsMessage('Invite saved.')
+      setGroupSettingsMessage('Person invited and list updated.')
       await loadGroupDetails(session.groupId, profile.userId)
     } catch (error) {
       console.error('[Nearby][Settings] Add invite failed:', error)
       setGroupSettingsError('Could not add invite.')
     } finally {
       setInviteSaving(false)
-    }
-  }
-
-  const shareViaWhatsApp = () => {
-    setGroupSettingsError('')
-    try {
-      const encoded = encodeURIComponent(groupInviteMessage)
-      const isMobile = /iPhone|Android/i.test(navigator.userAgent)
-      const url = isMobile
-        ? `https://wa.me/?text=${encoded}`
-        : `https://web.whatsapp.com/send?text=${encoded}`
-      window.open(url, '_blank', 'noopener,noreferrer')
-    } catch (error) {
-      console.error('[Nearby][Settings] WhatsApp share failed:', error)
-      setGroupSettingsError('Could not open WhatsApp share.')
     }
   }
 
@@ -571,6 +724,8 @@ function SettingsPage() {
     localStorage.removeItem('nearby_passcode_set')
     window.location.replace(withBasePath('/'))
   }
+
+  const passcodeDirty = groupPasscode.trim() !== savedGroupPasscode.trim()
 
   return (
     <main className="min-h-screen bg-[#f5f6f8] pb-20">
@@ -689,7 +844,7 @@ function SettingsPage() {
                       <div className="flex gap-2">
                         <button
                           type="button"
-                          onClick={() => void saveGroupSettings()}
+                          onClick={() => void saveGroupName()}
                           disabled={groupSettingsSaving}
                           className="flex-1 rounded-xl bg-[#1f355d] px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
                         >
@@ -742,14 +897,16 @@ function SettingsPage() {
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={() => setGroupVisibility('public')}
+                      onClick={() => void updateVisibility('public')}
+                      disabled={visibilitySaving}
                       className={`rounded-xl border px-3 py-2.5 text-sm font-semibold ${groupVisibility === 'public' ? 'border-[#1f355d] bg-[#ebf0f9] text-[#1f355d]' : 'border-[#d8deea] bg-white text-[#4d5871]'}`}
                     >
                       Public
                     </button>
                     <button
                       type="button"
-                      onClick={() => setGroupVisibility('private')}
+                      onClick={() => void updateVisibility('private')}
+                      disabled={visibilitySaving}
                       className={`rounded-xl border px-3 py-2.5 text-sm font-semibold ${groupVisibility === 'private' ? 'border-[#1f355d] bg-[#ebf0f9] text-[#1f355d]' : 'border-[#d8deea] bg-white text-[#4d5871]'}`}
                     >
                       Private
@@ -764,9 +921,12 @@ function SettingsPage() {
                   <div className="mt-4 rounded-xl border border-[#e6ebf4] bg-[#fafbfd] p-3">
                     <p className="text-xs text-neutral-500">Passcode</p>
                     <div className="mt-2 flex items-center gap-2">
-                      <div className="min-w-0 flex-1 rounded-xl border border-[#d6ddeb] bg-white px-4 py-2.5 text-sm font-semibold tracking-[0.18em] text-neutral-900">
-                        {showGroupPasscode ? groupPasscode : '••••••••'}
-                      </div>
+                      <input
+                        type={showGroupPasscode ? 'text' : 'password'}
+                        value={groupPasscode}
+                        onChange={(event) => setGroupPasscode(event.target.value)}
+                        className="min-w-0 flex-1 rounded-xl border border-[#d6ddeb] bg-white px-4 py-2.5 text-sm font-semibold tracking-[0.12em] text-neutral-900 outline-none"
+                      />
                       <button
                         type="button"
                         onClick={() => setShowGroupPasscode((prev) => !prev)}
@@ -775,44 +935,29 @@ function SettingsPage() {
                         {showGroupPasscode ? 'Hide' : 'Show'}
                       </button>
                     </div>
-                    <div className="mt-2 flex gap-2">
+                    {passcodeDirty && (
                       <button
                         type="button"
-                        onClick={() => void copyGroupPasscode()}
-                        className="flex-1 rounded-xl border border-[#d6ddeb] bg-white px-3 py-2.5 text-xs font-medium text-neutral-700"
+                        onClick={() => void saveGroupPasscode()}
+                        disabled={groupSettingsSaving}
+                        className="mt-2 w-full rounded-xl bg-[#1f355d] px-3 py-2.5 text-sm font-medium text-white disabled:opacity-50"
                       >
-                        Copy
+                        {groupSettingsSaving ? 'Saving...' : 'Save passcode'}
                       </button>
-                      <button
-                        type="button"
-                        onClick={shareViaWhatsApp}
-                        className="flex-1 rounded-xl border border-[#d6ddeb] bg-white px-3 py-2.5 text-xs font-medium text-neutral-700"
-                      >
-                        Share via WhatsApp
-                      </button>
-                    </div>
+                    )}
                   </div>
 
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={shareViaWhatsApp}
-                      className="rounded-xl border border-[#d6ddeb] bg-white px-3 py-2.5 text-sm font-medium text-neutral-700"
-                    >
-                      Invite via WhatsApp
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void copyInviteMessage()}
-                      className="rounded-xl border border-[#d6ddeb] bg-white px-3 py-2.5 text-sm font-medium text-neutral-700"
-                    >
-                      Copy Invite Message
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void shareInvitation()}
+                    className="mt-4 w-full rounded-xl border border-[#d6ddeb] bg-white px-3 py-2.5 text-sm font-medium text-neutral-700"
+                  >
+                    Share Invitation
+                  </button>
 
                   {groupVisibility === 'private' && (
                     <div className="mt-4 rounded-xl border border-[#e6ebf4] bg-[#fafbfd] p-3">
-                      <p className="text-sm font-semibold text-neutral-900">Invite Members</p>
+                      <p className="text-sm font-semibold text-neutral-900">Invite by phone</p>
                       <div className="mt-2 flex gap-2">
                         <input
                           type="tel"
@@ -830,49 +975,44 @@ function SettingsPage() {
                           {inviteSaving ? 'Inviting...' : 'Invite'}
                         </button>
                       </div>
-
-                      <div className="mt-3 space-y-2">
-                        {invites.map((invite) => (
-                          <div key={invite.id} className="rounded-xl border border-[#e6ebf4] bg-white px-3 py-2.5">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="truncate text-sm font-medium text-neutral-900">{invite.name || invite.phoneNumber}</p>
-                              <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${invite.status === 'joined' ? 'bg-[#d4edde] text-[#1a6e3a]' : 'bg-[#fff3cd] text-[#8a6d1f]'}`}>
-                                {invite.status === 'joined' ? 'Joined' : 'Invited'}
-                              </span>
-                            </div>
-                            {invite.name && <p className="mt-1 text-xs text-neutral-500">{invite.phoneNumber}</p>}
-                          </div>
-                        ))}
-                        {invites.length === 0 && <p className="text-xs text-neutral-500">No invites yet.</p>}
-                      </div>
+                      <p className="mt-2 text-xs text-neutral-500">Invite saves instantly and appears in the People list right away.</p>
                     </div>
                   )}
 
                   <div className="mt-4 border-t border-[#e6ebf4] pt-4">
-                    <h3 className="text-sm font-semibold text-neutral-900">Members</h3>
+                    <h3 className="text-sm font-semibold text-neutral-900">People</h3>
                     <div className="mt-2 space-y-2">
-                      {people.map((person) => {
-                        const label = person.name || person.phoneNumber || 'User'
+                      {unifiedPeopleRows.map((person) => {
                         const isOwner = person.role === 'owner'
-                        const canRemove = !isOwner || requesterRole === 'owner'
+                        const canManage = person.userId && person.status === 'Joined Group'
+                        const canRemove = canManage && (!isOwner || requesterRole === 'owner')
+                        const canPromoteToOwner = requesterRole === 'owner' && canManage && !isOwner
+
                         return (
-                          <div key={person.userId} className="rounded-xl border border-[#e6ebf4] bg-[#fafbfd] p-3">
+                          <div key={person.key} className="rounded-xl border border-[#e6ebf4] bg-[#fafbfd] p-3">
                             <div className="flex items-center justify-between gap-2">
                               <div className="min-w-0">
-                                <p className="truncate text-sm font-medium text-neutral-900">{label}</p>
-                                {!!person.phoneNumber && <p className="truncate text-xs text-neutral-500">{person.phoneNumber}</p>}
+                                <p className="truncate text-sm font-medium text-neutral-900">{person.name || person.phoneNumber || 'User'}</p>
+                                {person.phoneNumber && <p className="truncate text-xs text-neutral-500">{person.phoneNumber}</p>}
                               </div>
-                              <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${isOwner ? 'bg-[#fde9cd] text-[#8a5a12]' : 'bg-[#eef3fb] text-[#1f355d]'}`}>
-                                {isOwner ? 'Owner' : 'Member'}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                {person.role && (
+                                  <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${person.role === 'owner' ? 'bg-[#fde9cd] text-[#8a5a12]' : 'bg-[#eef3fb] text-[#1f355d]'}`}>
+                                    {person.role === 'owner' ? 'Owner' : 'Member'}
+                                  </span>
+                                )}
+                                <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${person.status === 'Joined Group' ? 'bg-[#d4edde] text-[#1a6e3a]' : person.status === 'Onboarded' ? 'bg-[#e8f0ff] text-[#224f96]' : 'bg-[#fff3cd] text-[#8a6d1f]'}`}>
+                                  {person.status}
+                                </span>
+                              </div>
                             </div>
 
-                            {(requesterRole === 'owner' || canRemove) && (
+                            {(canPromoteToOwner || canRemove) && person.userId && (
                               <div className="mt-2 flex flex-wrap gap-2">
-                                {requesterRole === 'owner' && !isOwner && (
+                                {canPromoteToOwner && (
                                   <button
                                     type="button"
-                                    onClick={() => void updatePersonRole(person.userId, 'promote_owner')}
+                                    onClick={() => void updatePersonRole(person.userId as string, 'promote_owner')}
                                     disabled={peopleActionLoadingUserId === person.userId}
                                     className="rounded-lg border border-[#d6ddeb] bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 disabled:opacity-50"
                                   >
@@ -882,7 +1022,7 @@ function SettingsPage() {
                                 {canRemove && (
                                   <button
                                     type="button"
-                                    onClick={() => void updatePersonRole(person.userId, 'remove')}
+                                    onClick={() => void updatePersonRole(person.userId as string, 'remove')}
                                     disabled={peopleActionLoadingUserId === person.userId}
                                     className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 disabled:opacity-50"
                                   >
@@ -894,18 +1034,9 @@ function SettingsPage() {
                           </div>
                         )
                       })}
-                      {people.length === 0 && <p className="text-sm text-neutral-500">No people yet.</p>}
+                      {unifiedPeopleRows.length === 0 && <p className="text-sm text-neutral-500">No people yet.</p>}
                     </div>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => void saveGroupSettings()}
-                    disabled={groupSettingsSaving}
-                    className="mt-4 w-full rounded-xl bg-[#1f355d] px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
-                  >
-                    {groupSettingsSaving ? 'Saving...' : 'Save Access & People'}
-                  </button>
 
                   {groupSettingsError && <p className="mt-2 text-sm text-amber-700">{groupSettingsError}</p>}
                   {groupSettingsMessage && <p className="mt-2 text-sm text-[#1f355d]">{groupSettingsMessage}</p>}
@@ -919,10 +1050,12 @@ function SettingsPage() {
   )
 }
 
-export default function SettingsPageWrapper() {
+function SettingsPageWrapper() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<main className="min-h-screen bg-[#f5f6f8]" />}>
       <SettingsPage />
     </Suspense>
   )
 }
+
+export default SettingsPageWrapper

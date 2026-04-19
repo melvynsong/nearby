@@ -63,14 +63,47 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, message: 'Invites are only needed for private groups.' }, { status: 400 })
     }
 
+    const userLookup = await supabase
+      .from('users')
+      .select('id, full_name')
+      .eq('phone_number', phoneNumber)
+      .maybeSingle()
+
+    const invitedUserId = userLookup.data?.id ?? ''
+    const userExists = !!invitedUserId
+
+    let membershipExists = false
+    if (invitedUserId) {
+      const membershipLookupPreferred = await supabase
+        .from('group_memberships')
+        .select('user_id, status')
+        .eq('group_id', groupId)
+        .eq('user_id', invitedUserId)
+        .eq('status', 'active')
+        .maybeSingle()
+
+      if (membershipLookupPreferred.error?.code === '42703' || membershipLookupPreferred.error?.code === 'PGRST204') {
+        const membershipLookupFallback = await supabase
+          .from('group_memberships')
+          .select('user_id')
+          .eq('group_id', groupId)
+          .eq('user_id', invitedUserId)
+          .maybeSingle()
+        membershipExists = !!membershipLookupFallback.data?.user_id
+      } else {
+        membershipExists = !!membershipLookupPreferred.data?.user_id
+      }
+    }
+
+    const inviteStatus = membershipExists ? 'joined' : 'invited'
     const upsertResult = await supabase
       .from('group_invites')
       .upsert({
         group_id: groupId,
         phone_number: phoneNumber,
         invited_by: requesterUserId,
-        status: 'invited',
-        joined_at: null,
+        status: inviteStatus,
+        joined_at: membershipExists ? new Date().toISOString() : null,
       }, { onConflict: 'group_id,phone_number' })
 
     if (upsertResult.error?.code === '42P01' || upsertResult.error?.code === '42703' || upsertResult.error?.code === 'PGRST204') {
@@ -82,7 +115,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, message: 'Could not save invite.' }, { status: 500 })
     }
 
-    return NextResponse.json({ ok: true, phoneNumber })
+    const resolvedStatus = membershipExists
+      ? 'Joined Group'
+      : userExists
+      ? 'Onboarded'
+      : 'Invited'
+
+    console.log('[Invite]', {
+      group_id: groupId,
+      phone_number: phoneNumber,
+      user_exists: userExists,
+      membership_exists: membershipExists,
+      resolved_status: resolvedStatus,
+    })
+
+    return NextResponse.json({
+      ok: true,
+      phoneNumber,
+      resolvedStatus,
+      name: userLookup.data?.full_name ?? '',
+    })
   } catch (error) {
     console.error('[GroupInvites] unexpected error:', error)
     return NextResponse.json({ ok: false, message: 'Could not save invite.' }, { status: 500 })

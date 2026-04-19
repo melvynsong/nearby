@@ -86,6 +86,10 @@ export default function NearbyHome() {
   const [gallery, setGallery] = useState<GalleryState>(null)
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set())
   const [showGroupMenu, setShowGroupMenu] = useState(false)
+  const [showHiddenGroups, setShowHiddenGroups] = useState(false)
+  const [hiddenGroupIds, setHiddenGroupIds] = useState<Set<string>>(new Set())
+  const [currentUserId, setCurrentUserId] = useState('')
+  const [visibilityBusyGroupId, setVisibilityBusyGroupId] = useState<string | null>(null)
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false)
   const [deletePlaceTarget, setDeletePlaceTarget] = useState<PlaceCard | null>(null)
   const [deletingPlace, setDeletingPlace] = useState(false)
@@ -195,12 +199,101 @@ export default function NearbyHome() {
     }
   }, [])
 
+  const loadHiddenGroupIds = useCallback(async (userId: string) => {
+    if (!userId) return
+    try {
+      const response = await fetch(apiPath('/api/groups/preferences'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'list', requesterUserId: userId }),
+      })
+      const result = await response.json()
+      if (!response.ok || !result?.ok) return
+      setHiddenGroupIds(new Set(((result.hiddenGroupIds ?? []) as string[]).filter(Boolean)))
+    } catch (error) {
+      console.warn('[Nearby][GroupVisibility] Failed to load hidden groups:', error)
+    }
+  }, [])
+
+  const setGroupVisibility = useCallback(async (groupId: string, isHidden: boolean) => {
+    if (!currentUserId || !groupId) return
+
+    setVisibilityBusyGroupId(groupId)
+    setHiddenGroupIds((prev) => {
+      const next = new Set(prev)
+      if (isHidden) next.add(groupId)
+      else next.delete(groupId)
+      return next
+    })
+
+    try {
+      const response = await fetch(apiPath('/api/groups/preferences'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'set',
+          requesterUserId: currentUserId,
+          groupId,
+          isHidden,
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.message ?? 'Could not update visibility.')
+      }
+    } catch (error) {
+      console.error('[Nearby][GroupVisibility] Update failed:', error)
+      setHiddenGroupIds((prev) => {
+        const next = new Set(prev)
+        if (isHidden) next.delete(groupId)
+        else next.add(groupId)
+        return next
+      })
+    } finally {
+      setVisibilityBusyGroupId(null)
+    }
+  }, [currentUserId])
+
   // ── Session init ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const raw = localStorage.getItem('nearby_session')
     if (!raw) { router.replace(withBasePath('/')); return }
     const s: Session = JSON.parse(raw)
+    const rawRegister = localStorage.getItem('nearby_register')
+    const registerUserId = rawRegister
+      ? (() => {
+          try {
+            const parsed = JSON.parse(rawRegister) as { userId?: string }
+            return parsed.userId ?? ''
+          } catch {
+            return ''
+          }
+        })()
+      : ''
+
+    if (registerUserId) {
+      setCurrentUserId(registerUserId)
+      void loadHiddenGroupIds(registerUserId)
+    } else {
+      void (async () => {
+        try {
+          const result = await supabase
+            .from('members')
+            .select('user_id')
+            .eq('id', s.memberId)
+            .maybeSingle()
+
+          const fallbackUserId = result.data?.user_id ?? ''
+          if (!fallbackUserId) return
+          setCurrentUserId(fallbackUserId)
+          void loadHiddenGroupIds(fallbackUserId)
+        } catch {
+          // No-op: hiding groups remains unavailable when user id cannot be resolved.
+        }
+      })()
+    }
+
     setSession(s)
     const allGroups = s.allGroups ?? []
     const lastUsedGroupId = localStorage.getItem('nearby_last_group_id')
@@ -211,7 +304,7 @@ export default function NearbyHome() {
     setActiveGroup(initial)
     fetchPlaces(initial.groupId)
     fetchCategories(initial.groupId)
-  }, [router, fetchPlaces, fetchCategories])
+  }, [router, fetchPlaces, fetchCategories, loadHiddenGroupIds])
 
   useEffect(() => {
     if (!activeGroup) return
@@ -452,6 +545,12 @@ export default function NearbyHome() {
   const displayed = displayedPlaces()
   const subtitle = locationSubtitle()
   const allGroups = session.allGroups ?? []
+  const hiddenCount = allGroups.filter((group) => hiddenGroupIds.has(group.groupId)).length
+  const visibleGroups = allGroups.filter((group) => {
+    if (showHiddenGroups) return true
+    if (group.groupId === activeGroup.groupId) return true
+    return !hiddenGroupIds.has(group.groupId)
+  })
 
   return (
     <main className="min-h-screen bg-[#f5f6f8] pb-24">
@@ -504,22 +603,42 @@ export default function NearbyHome() {
           {showGroupMenu && (
             <div className="absolute z-20 mt-2 w-64 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg transition-all duration-200">
               <div className="max-h-60 overflow-auto py-1">
-                {allGroups.map((g) => (
-                  <button
-                    key={g.groupId}
-                    onClick={() => switchGroup(g)}
-                    className={`w-full px-3 py-2 text-left text-sm transition-colors ${
-                      activeGroup.groupId === g.groupId
-                        ? 'bg-[#ebf0f9] text-[#1f355d] font-medium'
-                        : 'text-neutral-600 hover:bg-neutral-50'
-                    }`}
-                  >
-                    {g.groupName}
-                  </button>
-                ))}
+                {visibleGroups.map((g) => {
+                  const isHidden = hiddenGroupIds.has(g.groupId)
+                  return (
+                    <div key={g.groupId} className="flex items-center gap-2 px-2 py-1.5">
+                      <button
+                        onClick={() => switchGroup(g)}
+                        className={`min-w-0 flex-1 rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${
+                          activeGroup.groupId === g.groupId
+                            ? 'bg-[#ebf0f9] text-[#1f355d] font-medium'
+                            : 'text-neutral-600 hover:bg-neutral-50'
+                        }`}
+                      >
+                        <span className="truncate">{g.groupName}</span>
+                      </button>
+                      <button
+                        onClick={() => void setGroupVisibility(g.groupId, !isHidden)}
+                        disabled={visibilityBusyGroupId === g.groupId}
+                        className="shrink-0 rounded-md border border-[#d6ddeb] bg-white px-2 py-1 text-[11px] font-medium text-neutral-600 disabled:opacity-50"
+                      >
+                        {visibilityBusyGroupId === g.groupId ? '...' : isHidden ? 'Unhide' : 'Hide'}
+                      </button>
+                    </div>
+                  )
+                })}
+                {visibleGroups.length === 0 && (
+                  <p className="px-3 py-3 text-xs text-neutral-500">No visible groups. Enable hidden groups to manage them.</p>
+                )}
               </div>
 
               <div className="border-t border-neutral-100 p-1">
+                <button
+                  onClick={() => setShowHiddenGroups((prev) => !prev)}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 transition-colors"
+                >
+                  {showHiddenGroups ? 'Hide hidden groups' : `Show hidden groups${hiddenCount > 0 ? ` (${hiddenCount})` : ''}`}
+                </button>
                 <button
                   onClick={() => {
                     setShowGroupMenu(false)

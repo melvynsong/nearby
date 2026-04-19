@@ -155,17 +155,49 @@ export async function POST(request: NextRequest) {
       ? []
       : ((invitesResult.data ?? []) as Array<{ id: string; phone_number: string; status: 'invited' | 'joined'; created_at: string; joined_at: string | null }>)
 
+    const invitedPhones = Array.from(new Set(invites.map((invite) => invite.phone_number).filter(Boolean)))
+
+    let usersByPhone = new Map<string, { id: string; full_name: string | null }>()
+    if (invitedPhones.length > 0) {
+      const usersByPhoneResult = await supabase
+        .from('users')
+        .select('id, full_name, phone_number')
+        .in('phone_number', invitedPhones)
+
+      const usersForInvites = (usersByPhoneResult.data ?? []) as Array<{ id: string; full_name: string | null; phone_number: string | null }>
+      usersByPhone = new Map(
+        usersForInvites
+          .filter((user) => !!user.phone_number)
+          .map((user) => [user.phone_number as string, { id: user.id, full_name: user.full_name }]),
+      )
+    }
+
     const invitesWithNames = invites.map((invite) => {
       const joinedMember = normalizedMembers.find((member) => member.phoneNumber === invite.phone_number)
+      const invitedUser = usersByPhone.get(invite.phone_number)
+      const displayStatus = joinedMember
+        ? 'joined_group'
+        : invitedUser
+        ? 'onboarded'
+        : 'invited'
+
       return {
         id: invite.id,
         phoneNumber: invite.phone_number,
         status: invite.status,
-        name: joinedMember?.name ?? '',
+        displayStatus,
+        name: joinedMember?.name ?? invitedUser?.full_name ?? '',
         createdAt: invite.created_at,
         joinedAt: invite.joined_at,
       }
     })
+
+    const requesterMembershipRole = membershipsByUserId.get(requesterUserId)?.role
+    const requesterRole = ownerUserId && ownerUserId === requesterUserId
+      ? 'owner'
+      : requesterMembershipRole === 'owner'
+      ? 'owner'
+      : 'member'
 
     return NextResponse.json({
       ok: true,
@@ -176,7 +208,7 @@ export async function POST(request: NextRequest) {
         passcode: group.access_code,
         visibility: group.visibility ?? 'public',
       },
-      requesterRole: ownerUserId && ownerUserId === requesterUserId ? 'owner' : 'member',
+      requesterRole,
       members: normalizedMembers,
       invites: invitesWithNames,
     })
