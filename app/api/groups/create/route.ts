@@ -5,6 +5,11 @@ import { getServerSupabaseClient, getServiceRoleSupabaseClient, getUserSupabaseC
 
 type FriendInput = { name: string; phone: string }
 
+function nextSlugCandidate(baseSlug: string, attempt: number): string {
+  if (attempt === 0) return baseSlug
+  return `${baseSlug}-${attempt + 1}`
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -212,30 +217,51 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const slug = slugify(groupName)
+    const baseSlug = slugify(groupName)
 
     let groupId = ''
-    const createWithOwner = await serverSupabase
-      .from('groups')
-      .insert({
-        name: groupName,
-        title: groupTitle || groupName,
-        slug,
-        access_code: passcode,
-        visibility: groupVisibility,
-        created_by_user_id: creatorUserId,
-      })
-      .select('id')
-      .single()
+    let slug = baseSlug
+    let usedFallbackInsert = false
 
-    if (createWithOwner.error?.message?.includes('created_by_user_id')) {
-      const fallbackCreate = await serverSupabase
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      slug = nextSlugCandidate(baseSlug, attempt)
+
+      const createWithOwner = await serverSupabase
         .from('groups')
-        .insert({ name: groupName, title: groupTitle || groupName, slug, access_code: passcode, visibility: groupVisibility })
+        .insert({
+          name: groupName,
+          title: groupTitle || groupName,
+          slug,
+          access_code: passcode,
+          visibility: groupVisibility,
+          created_by_user_id: creatorUserId,
+        })
         .select('id')
         .single()
 
-      if (fallbackCreate.error || !fallbackCreate.data?.id) {
+      if (createWithOwner.data?.id) {
+        groupId = createWithOwner.data.id
+        break
+      }
+
+      // Older schema fallback (no created_by_user_id column).
+      if (createWithOwner.error?.message?.includes('created_by_user_id')) {
+        usedFallbackInsert = true
+        const fallbackCreate = await serverSupabase
+          .from('groups')
+          .insert({ name: groupName, title: groupTitle || groupName, slug, access_code: passcode, visibility: groupVisibility })
+          .select('id')
+          .single()
+
+        if (fallbackCreate.data?.id) {
+          groupId = fallbackCreate.data.id
+          break
+        }
+
+        if (fallbackCreate.error?.code === '23505') {
+          continue
+        }
+
         console.error('[Nearby][API][GroupCreate] Group insert fallback failed:', fallbackCreate.error)
         return NextResponse.json(
           { ok: false, message: 'We could not save your changes. Please try again.' },
@@ -243,15 +269,27 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      groupId = fallbackCreate.data.id
-    } else if (createWithOwner.error || !createWithOwner.data?.id) {
+      if (createWithOwner.error?.code === '23505') {
+        // Slug collision; try next candidate.
+        continue
+      }
+
       console.error('[Nearby][API][GroupCreate] Group insert failed:', createWithOwner.error)
       return NextResponse.json(
         { ok: false, message: 'We could not save your changes. Please try again.' },
         { status: 500 },
       )
-    } else {
-      groupId = createWithOwner.data.id
+    }
+
+    if (!groupId) {
+      console.error('[Nearby][API][GroupCreate] Failed to allocate unique slug:', {
+        baseSlug,
+        usedFallbackInsert,
+      })
+      return NextResponse.json(
+        { ok: false, message: 'A group with a similar name already exists. Please try a different name.' },
+        { status: 409 },
+      )
     }
 
     async function upsertMember(userId: string, displayName: string, phoneNumber: string, last4: string, targetGroupId: string): Promise<string> {
