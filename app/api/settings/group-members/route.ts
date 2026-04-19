@@ -84,6 +84,26 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: false, message: 'Could not update owner.' }, { status: 500 })
       }
 
+      const roleUpdate = await supabase
+        .from('group_memberships')
+        .update({ role: 'member' })
+        .eq('group_id', groupId)
+        .eq('user_id', requesterUserId)
+
+      if (roleUpdate.error?.code !== '42703' && roleUpdate.error?.code !== 'PGRST204' && roleUpdate.error) {
+        console.error('[Group Members] demote previous owner failed:', roleUpdate.error)
+      }
+
+      const targetRoleUpdate = await supabase
+        .from('group_memberships')
+        .update({ role: 'owner' })
+        .eq('group_id', groupId)
+        .eq('user_id', targetUserId)
+
+      if (targetRoleUpdate.error?.code !== '42703' && targetRoleUpdate.error?.code !== 'PGRST204' && targetRoleUpdate.error) {
+        console.error('[Group Members] promote new owner role failed:', targetRoleUpdate.error)
+      }
+
       return NextResponse.json({ ok: true })
     }
 
@@ -94,7 +114,7 @@ export async function POST(request: NextRequest) {
 
       const targetMembershipPreferred = await supabase
         .from('group_memberships')
-        .update({ status: 'active', group_onboarded: true })
+        .update({ status: 'active', group_onboarded: true, role: 'member' })
         .eq('group_id', groupId)
         .eq('user_id', targetUserId)
 

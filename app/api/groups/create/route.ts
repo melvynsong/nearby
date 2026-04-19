@@ -320,13 +320,15 @@ export async function POST(request: NextRequest) {
       return inserted.data.id
     }
 
-    async function upsertMembership(userId: string, targetGroupId: string, memberId: string) {
+    async function upsertMembership(userId: string, targetGroupId: string, memberId: string, role: 'owner' | 'member') {
       const preferredMembership = await serverSupabase
         .from('group_memberships')
         .upsert({
+          individual_id: userId,
           user_id: userId,
           group_id: targetGroupId,
           member_id: memberId,
+          role,
           status: 'active',
           group_onboarded: true,
           requested_at: new Date().toISOString(),
@@ -349,7 +351,7 @@ export async function POST(request: NextRequest) {
 
     try {
       const creatorMemberId = await upsertMember(creatorUserId, creatorName, creatorPhoneNumber, creatorPhone4, groupId)
-      await upsertMembership(creatorUserId, groupId, creatorMemberId)
+      await upsertMembership(creatorUserId, groupId, creatorMemberId, 'owner')
 
       const validFriends = friends.filter((f) => f?.name?.trim() && f?.phone?.trim())
       for (const friend of validFriends) {
@@ -357,7 +359,7 @@ export async function POST(request: NextRequest) {
         const friendPhone = normalizePhoneNumber(friend.phone)
         const friendUserId = await upsertUser(friendName, friendPhone)
         const friendMemberId = await upsertMember(friendUserId, friendName, friendPhone, phoneLast4(friendPhone), groupId)
-        await upsertMembership(friendUserId, groupId, friendMemberId)
+        await upsertMembership(friendUserId, groupId, friendMemberId, 'member')
       }
 
       return NextResponse.json({

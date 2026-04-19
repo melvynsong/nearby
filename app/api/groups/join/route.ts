@@ -87,6 +87,13 @@ export async function POST(request: NextRequest) {
 
     const targetGroup = (groupsResult.data ?? [])[0] as { id: string; name: string; visibility?: 'public' | 'private' } | undefined
     if (!targetGroup?.id) {
+      console.warn('[GroupJoin]', {
+        phone_number: phoneNumber,
+        group_id: null,
+        invite_found: false,
+        passcode_valid: false,
+        result: 'blocked',
+      })
       return NextResponse.json(
         { ok: false, message: 'That passcode does not look right. Please check and try again.' },
         { status: 404 },
@@ -98,6 +105,49 @@ export async function POST(request: NextRequest) {
         { ok: false, message: 'Please update your account before joining this group.' },
         { status: 400 },
       )
+    }
+
+    const isPrivate = (targetGroup.visibility ?? 'public') === 'private'
+    let inviteFound = false
+
+    if (isPrivate) {
+      const inviteLookup = await supabase
+        .from('group_invites')
+        .select('id, status')
+        .eq('group_id', targetGroup.id)
+        .eq('phone_number', phoneNumber)
+        .maybeSingle()
+
+      if (inviteLookup.error) {
+        console.error('[GroupJoin]', {
+          phone_number: phoneNumber,
+          group_id: targetGroup.id,
+          invite_found: false,
+          passcode_valid: true,
+          result: 'blocked',
+          reason: 'invite_lookup_error',
+          error: inviteLookup.error,
+        })
+        return NextResponse.json(
+          { ok: false, message: 'Private group invites are not available right now. Please try again.' },
+          { status: 500 },
+        )
+      }
+
+      inviteFound = !!inviteLookup.data?.id
+      if (!inviteFound) {
+        console.warn('[GroupJoin]', {
+          phone_number: phoneNumber,
+          group_id: targetGroup.id,
+          invite_found: false,
+          passcode_valid: true,
+          result: 'blocked',
+        })
+        return NextResponse.json(
+          { ok: false, message: 'You are not invited to this group' },
+          { status: 403 },
+        )
+      }
     }
 
     const existingMembershipPreferred = await supabase
@@ -139,6 +189,22 @@ export async function POST(request: NextRequest) {
         .eq('id', existingMembership.member_id)
         .maybeSingle()
 
+      if (isPrivate && inviteFound) {
+        await supabase
+          .from('group_invites')
+          .update({ status: 'joined', joined_at: new Date().toISOString() })
+          .eq('group_id', targetGroup.id)
+          .eq('phone_number', phoneNumber)
+      }
+
+      console.log('[GroupJoin]', {
+        phone_number: phoneNumber,
+        group_id: targetGroup.id,
+        invite_found: inviteFound,
+        passcode_valid: true,
+        result: 'success',
+      })
+
       return NextResponse.json({
         ok: true,
         groupId: targetGroup.id,
@@ -148,8 +214,6 @@ export async function POST(request: NextRequest) {
         membershipStatus: 'active',
       })
     }
-
-    const isPrivate = (targetGroup.visibility ?? 'public') === 'private'
 
     console.log('[Group]', {
       event: 'join_attempt',
@@ -210,9 +274,11 @@ export async function POST(request: NextRequest) {
     const preferredMembershipUpsert = await supabase
       .from('group_memberships')
       .upsert({
+        individual_id: userId,
         user_id: userId,
         group_id: targetGroup.id,
         member_id: memberId,
+        role: 'member',
         status: nextStatus,
         group_onboarded: nextStatus === 'active',
         requested_at: new Date().toISOString(),
@@ -238,11 +304,31 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (isPrivate && inviteFound) {
+      const inviteUpdate = await supabase
+        .from('group_invites')
+        .update({ status: 'joined', joined_at: new Date().toISOString() })
+        .eq('group_id', targetGroup.id)
+        .eq('phone_number', phoneNumber)
+
+      if (inviteUpdate.error) {
+        console.error('[Nearby][API][GroupJoin] Invite update failed:', inviteUpdate.error)
+      }
+    }
+
     console.log('[Membership]', {
       event: 'created_or_updated',
       userId,
       groupId: targetGroup.id,
       status: nextStatus,
+    })
+
+    console.log('[GroupJoin]', {
+      phone_number: phoneNumber,
+      group_id: targetGroup.id,
+      invite_found: inviteFound,
+      passcode_valid: true,
+      result: 'success',
     })
 
     return NextResponse.json({

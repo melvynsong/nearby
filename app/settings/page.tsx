@@ -40,7 +40,16 @@ type GroupPerson = {
   memberId: string
   name: string
   phoneNumber: string
-  role: 'owner' | 'member' | 'public'
+  role: 'owner' | 'member'
+}
+
+type GroupInvite = {
+  id: string
+  phoneNumber: string
+  status: 'invited' | 'joined'
+  name: string
+  createdAt: string
+  joinedAt: string | null
 }
 
 function SettingsPage() {
@@ -71,6 +80,9 @@ function SettingsPage() {
   const [groupInfoEditing, setGroupInfoEditing] = useState(false)
   const [showGroupPasscode, setShowGroupPasscode] = useState(false)
   const [people, setPeople] = useState<GroupPerson[]>([])
+  const [invites, setInvites] = useState<GroupInvite[]>([])
+  const [invitePhoneNumber, setInvitePhoneNumber] = useState('')
+  const [inviteSaving, setInviteSaving] = useState(false)
   const [requesterRole, setRequesterRole] = useState<'owner' | 'member'>('member')
   const [peopleActionLoadingUserId, setPeopleActionLoadingUserId] = useState<string | null>(null)
   const [categoryRefreshMessage, setCategoryRefreshMessage] = useState('')
@@ -104,7 +116,15 @@ function SettingsPage() {
       memberId: person.memberId,
       name: person.name,
       phoneNumber: person.phoneNumber,
-      role: person.role === 'owner' ? 'owner' : person.role === 'public' ? 'public' : 'member',
+      role: person.role === 'owner' ? 'owner' : 'member',
+    })))
+    setInvites(((result.invites as GroupInvite[]) ?? []).map((invite) => ({
+      id: invite.id,
+      phoneNumber: invite.phoneNumber,
+      status: invite.status === 'joined' ? 'joined' : 'invited',
+      name: invite.name ?? '',
+      createdAt: invite.createdAt,
+      joinedAt: invite.joinedAt,
     })))
 
     setSession((prev) => {
@@ -398,6 +418,47 @@ function SettingsPage() {
     } catch (error) {
       console.error('[Nearby][Settings] Copy invite failed:', error)
       setGroupSettingsError('Could not copy invite right now.')
+    }
+  }
+
+  const addPrivateInvite = async () => {
+    if (!session || !profile) return
+
+    setGroupSettingsError('')
+    setGroupSettingsMessage('')
+
+    const phoneNumber = invitePhoneNumber.replace(/\D/g, '')
+    if (phoneNumber.length < 8) {
+      setGroupSettingsError('Enter a valid phone number.')
+      return
+    }
+
+    setInviteSaving(true)
+    try {
+      const response = await fetch(apiPath('/api/settings/group-invites'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groupId: session.groupId,
+          requesterUserId: profile.userId,
+          phoneNumber,
+        }),
+      })
+
+      const result = await response.json()
+      if (!response.ok || !result?.ok) {
+        setGroupSettingsError(result?.message ?? 'Could not add invite.')
+        return
+      }
+
+      setInvitePhoneNumber('')
+      setGroupSettingsMessage('Invite saved.')
+      await loadGroupDetails(session.groupId, profile.userId)
+    } catch (error) {
+      console.error('[Nearby][Settings] Add invite failed:', error)
+      setGroupSettingsError('Could not add invite.')
+    } finally {
+      setInviteSaving(false)
     }
   }
 
@@ -697,7 +758,7 @@ function SettingsPage() {
                   <p className="mt-2 text-xs text-neutral-500">
                     {groupVisibility === 'public'
                       ? 'Anyone with passcode can access.'
-                      : 'Any logged-in user with passcode joins immediately.'}
+                      : 'Only invited phone numbers with passcode can join.'}
                   </p>
 
                   <div className="mt-4 rounded-xl border border-[#e6ebf4] bg-[#fafbfd] p-3">
@@ -749,8 +810,46 @@ function SettingsPage() {
                     </button>
                   </div>
 
+                  {groupVisibility === 'private' && (
+                    <div className="mt-4 rounded-xl border border-[#e6ebf4] bg-[#fafbfd] p-3">
+                      <p className="text-sm font-semibold text-neutral-900">Invite Members</p>
+                      <div className="mt-2 flex gap-2">
+                        <input
+                          type="tel"
+                          value={invitePhoneNumber}
+                          onChange={(event) => setInvitePhoneNumber(event.target.value)}
+                          placeholder="Phone number"
+                          className="min-w-0 flex-1 rounded-xl border border-[#d6ddeb] px-4 py-2.5 text-sm outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void addPrivateInvite()}
+                          disabled={inviteSaving}
+                          className="rounded-xl bg-[#1f355d] px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                        >
+                          {inviteSaving ? 'Inviting...' : 'Invite'}
+                        </button>
+                      </div>
+
+                      <div className="mt-3 space-y-2">
+                        {invites.map((invite) => (
+                          <div key={invite.id} className="rounded-xl border border-[#e6ebf4] bg-white px-3 py-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="truncate text-sm font-medium text-neutral-900">{invite.name || invite.phoneNumber}</p>
+                              <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${invite.status === 'joined' ? 'bg-[#d4edde] text-[#1a6e3a]' : 'bg-[#fff3cd] text-[#8a6d1f]'}`}>
+                                {invite.status === 'joined' ? 'Joined' : 'Invited'}
+                              </span>
+                            </div>
+                            {invite.name && <p className="mt-1 text-xs text-neutral-500">{invite.phoneNumber}</p>}
+                          </div>
+                        ))}
+                        {invites.length === 0 && <p className="text-xs text-neutral-500">No invites yet.</p>}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="mt-4 border-t border-[#e6ebf4] pt-4">
-                    <h3 className="text-sm font-semibold text-neutral-900">People</h3>
+                    <h3 className="text-sm font-semibold text-neutral-900">Members</h3>
                     <div className="mt-2 space-y-2">
                       {people.map((person) => {
                         const label = person.name || person.phoneNumber || 'User'
@@ -778,16 +877,6 @@ function SettingsPage() {
                                     className="rounded-lg border border-[#d6ddeb] bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 disabled:opacity-50"
                                   >
                                     Promote to Owner
-                                  </button>
-                                )}
-                                {requesterRole === 'owner' && person.role === 'public' && (
-                                  <button
-                                    type="button"
-                                    onClick={() => void updatePersonRole(person.userId, 'promote_member')}
-                                    disabled={peopleActionLoadingUserId === person.userId}
-                                    className="rounded-lg border border-[#d6ddeb] bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 disabled:opacity-50"
-                                  >
-                                    Promote to Member
                                   </button>
                                 )}
                                 {canRemove && (

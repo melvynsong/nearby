@@ -69,6 +69,7 @@ export async function POST(request: NextRequest) {
         },
         requesterRole: 'member',
         members: [],
+        invites: [],
       })
     }
 
@@ -87,11 +88,11 @@ export async function POST(request: NextRequest) {
 
     const preferredMemberships = await supabase
       .from('group_memberships')
-      .select('user_id, status')
+      .select('user_id, status, role')
       .eq('group_id', groupId)
       .eq('status', 'active')
 
-    let activeMemberships = (preferredMemberships.data ?? []) as Array<{ user_id: string; status?: string | null }>
+    let activeMemberships = (preferredMemberships.data ?? []) as Array<{ user_id: string; status?: string | null; role?: string | null }>
     if (preferredMemberships.error?.code === '42703' || preferredMemberships.error?.code === 'PGRST204') {
       const fallbackMemberships = await supabase
         .from('group_memberships')
@@ -100,6 +101,7 @@ export async function POST(request: NextRequest) {
       activeMemberships = ((fallbackMemberships.data ?? []) as Array<{ user_id: string }>).map((row) => ({
         user_id: row.user_id,
         status: 'active',
+        role: 'member',
       }))
     }
 
@@ -121,22 +123,49 @@ export async function POST(request: NextRequest) {
 
     const membersByUserId = new Map(members.map((member) => [member.user_id, member]))
     const usersById = new Map(users.map((user) => [user.id, user]))
+    const membershipsByUserId = new Map(activeMemberships.map((membership) => [membership.user_id, membership]))
 
     const ownerUserId = group.created_by_user_id ?? ''
     const normalizedMembers = activeUserIds
       .map((userId) => {
         const member = membersByUserId.get(userId)
         const user = usersById.get(userId)
+        const membership = membershipsByUserId.get(userId)
         const phoneNumber = user?.phone_number ?? member?.phone_number ?? member?.phone_last4 ?? ''
+        const membershipRole = membership?.role === 'owner' || membership?.role === 'member'
+          ? membership.role
+          : null
         return {
           userId,
           memberId: member?.id ?? '',
           name: member?.display_name ?? user?.full_name ?? 'Member',
           phoneNumber,
-          role: ownerUserId && ownerUserId === userId ? 'owner' : 'member',
+          role: membershipRole ?? (ownerUserId && ownerUserId === userId ? 'owner' : 'member'),
         }
       })
       .filter((row) => row.memberId)
+
+    const invitesResult = await supabase
+      .from('group_invites')
+      .select('id, phone_number, status, created_at, joined_at')
+      .eq('group_id', groupId)
+      .order('created_at', { ascending: false })
+
+    const invites = (invitesResult.error?.code === '42P01' || invitesResult.error?.code === '42703' || invitesResult.error?.code === 'PGRST204')
+      ? []
+      : ((invitesResult.data ?? []) as Array<{ id: string; phone_number: string; status: 'invited' | 'joined'; created_at: string; joined_at: string | null }>)
+
+    const invitesWithNames = invites.map((invite) => {
+      const joinedMember = normalizedMembers.find((member) => member.phoneNumber === invite.phone_number)
+      return {
+        id: invite.id,
+        phoneNumber: invite.phone_number,
+        status: invite.status,
+        name: joinedMember?.name ?? '',
+        createdAt: invite.created_at,
+        joinedAt: invite.joined_at,
+      }
+    })
 
     return NextResponse.json({
       ok: true,
@@ -149,6 +178,7 @@ export async function POST(request: NextRequest) {
       },
       requesterRole: ownerUserId && ownerUserId === requesterUserId ? 'owner' : 'member',
       members: normalizedMembers,
+      invites: invitesWithNames,
     })
   } catch (error) {
     console.error('[Group] settings read error:', error)
