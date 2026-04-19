@@ -34,29 +34,99 @@ export default function Home() {
   const [showLoginErrorCard, setShowLoginErrorCard] = useState(false)
   const [registerAccount, setRegisterAccount] = useState<RegisterData | null>(null)
   const [hasSession, setHasSession] = useState(false)
+  const [bootstrapping, setBootstrapping] = useState(true)
 
   useEffect(() => {
-    const session = localStorage.getItem('nearby_session')
-    if (session) {
-      setHasSession(true)
-      return
+    let cancelled = false
+
+    const bootstrapSession = async () => {
+      try {
+        const rawSession = localStorage.getItem('nearby_session')
+        if (rawSession) {
+          setHasSession(true)
+          return
+        }
+
+        setHasSession(false)
+
+        const rawRegister = localStorage.getItem('nearby_register')
+        if (!rawRegister) {
+          setRegisterAccount(null)
+          return
+        }
+
+        let parsedRegister: RegisterData | null = null
+        try {
+          parsedRegister = JSON.parse(rawRegister) as RegisterData
+        } catch {
+          localStorage.removeItem('nearby_register')
+          setRegisterAccount(null)
+          return
+        }
+
+        setRegisterAccount(parsedRegister)
+
+        if (!parsedRegister?.userId) {
+          return
+        }
+
+        const response = await fetch(apiPath('/api/auth/restore-session'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: parsedRegister.userId }),
+        })
+
+        const result = await response.json()
+        if (!response.ok || !result?.ok) {
+          console.error('[Nearby][Home] restore-session failed:', result)
+          return
+        }
+
+        if (cancelled) return
+
+        const register = result.register as RegisterData | null
+        const session = result.session as (GroupEntry & { allGroups: GroupEntry[] }) | null
+
+        if (register?.userId) {
+          localStorage.setItem('nearby_register', JSON.stringify(register))
+          setRegisterAccount(register)
+        }
+
+        if (result.hasGroup && session) {
+          localStorage.setItem('nearby_session', JSON.stringify(session))
+          localStorage.setItem('nearby_last_group_id', session.groupId)
+          localStorage.removeItem('nearby_after_auth')
+          setHasSession(true)
+          router.replace(withBasePath('/nearby'))
+        }
+      } catch (error) {
+        console.error('[Nearby][Home] bootstrap failed:', error)
+      } finally {
+        if (!cancelled) {
+          setBootstrapping(false)
+        }
+      }
     }
 
-    // Ensure stale hasSession is cleared if localStorage was wiped (e.g. after logout)
-    setHasSession(false)
+    void bootstrapSession()
 
-    const rawRegister = localStorage.getItem('nearby_register')
-    if (rawRegister) {
-      try {
-        setRegisterAccount(JSON.parse(rawRegister) as RegisterData)
-      } catch {
-        setRegisterAccount(null)
-      }
+    return () => {
+      cancelled = true
     }
   }, [router])
 
   if (hasSession) {
     return <NearbyHome />
+  }
+
+  if (bootstrapping) {
+    return (
+      <main className="min-h-screen bg-[#f5f6f8] py-10">
+        <div className="nearby-shell flex min-h-[60vh] items-center justify-center">
+          <p className="text-sm text-[#677088]">Loading your Nearby session…</p>
+        </div>
+      </main>
+    )
   }
 
   const handleLogout = async () => {
@@ -70,6 +140,8 @@ export default function Home() {
     localStorage.removeItem('nearby_session')
     localStorage.removeItem('nearby_register')
     localStorage.removeItem('nearby_passcode_set')
+    localStorage.removeItem('nearby_after_auth')
+    localStorage.removeItem('nearby_last_group_id')
     console.log('[Nearby][Home] localStorage cleared')
     setRegisterAccount(null)
     setHasSession(false)
@@ -116,12 +188,21 @@ export default function Home() {
     setError('')
     setShowLoginErrorCard(false)
 
-    if (last4.length !== 4 || !/^\d{4}$/.test(last4)) {
+    const normalizedLast4 = last4.replace(/\D/g, '').slice(-4)
+    const normalizedPasscode = passcode.trim()
+
+    console.log('[Login Attempt]', {
+      last4: normalizedLast4,
+      passcode: normalizedPasscode,
+      method: loginMethod,
+    })
+
+    if (normalizedLast4.length !== 4 || !/^\d{4}$/.test(normalizedLast4)) {
       setError('Enter the last 4 digits of your mobile.')
       return
     }
 
-    if (!passcode.trim()) {
+    if (!normalizedPasscode) {
       setError(loginMethod === 'personal' ? 'Enter your personal passcode.' : 'Enter your group passcode.')
       return
     }
@@ -133,14 +214,15 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          last4,
+          last4: normalizedLast4,
           method: loginMethod,
-          personalPasscode: loginMethod === 'personal' ? passcode.trim() : '',
-          groupPasscode: loginMethod === 'group' ? passcode.trim() : '',
+          personalPasscode: loginMethod === 'personal' ? normalizedPasscode : '',
+          groupPasscode: loginMethod === 'group' ? normalizedPasscode : '',
         }),
       })
 
       const result = await response.json()
+      console.log('[DB Result]', result)
       if (!response.ok || !result?.ok) {
         setError(result?.message ?? 'Incorrect details.')
         return
@@ -165,27 +247,19 @@ export default function Home() {
       setRegisterAccount(register)
 
       if (!result.hasGroup || !session) {
+        localStorage.removeItem('nearby_session')
+        localStorage.removeItem('nearby_last_group_id')
         return
       }
 
       localStorage.setItem('nearby_session', JSON.stringify(session))
+      localStorage.setItem('nearby_last_group_id', session.groupId)
+      localStorage.removeItem('nearby_after_auth')
+      setHasSession(true)
 
-      const nextAction = localStorage.getItem('nearby_after_auth')
-      if (nextAction === 'create-group') {
-        localStorage.removeItem('nearby_after_auth')
-        router.push(withBasePath('/create-group'))
-        return
-      }
-
-      if (nextAction === 'join-group') {
-        localStorage.removeItem('nearby_after_auth')
-        router.push(withBasePath('/join-group'))
-        return
-      }
-
-      router.push(withBasePath('/nearby'))
+      router.replace(withBasePath('/nearby'))
     } catch (err) {
-      console.error('[Nearby][API] Login failed:', err)
+      console.error('[Login Error]', err)
       setError('We could not complete this just now. Please try again.')
       setShowLoginErrorCard(true)
     } finally {

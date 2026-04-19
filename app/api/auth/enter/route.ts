@@ -11,6 +11,16 @@ type GroupEntry = {
 
 type LoginMethod = 'personal' | 'group'
 
+type UserLoginRow = {
+  id: string
+  full_name: string | null
+  phone_number: string | null
+  phone_last4: string | null
+  has_personal_passcode: boolean | null
+  personal_passcode_hash: string | null
+  personal_passcode?: string | null
+}
+
 function verifyPasscode(passcode: string, stored: string): boolean {
   const [salt, hashHex] = stored.split(':')
   if (!salt || !hashHex) return false
@@ -20,6 +30,24 @@ function verifyPasscode(passcode: string, stored: string): boolean {
 
   if (candidate.length !== expected.length) return false
   return timingSafeEqual(candidate, expected)
+}
+
+function matchesPersonalPasscode(user: UserLoginRow, inputPasscode: string): boolean {
+  const normalizedInput = inputPasscode.trim()
+  const hashed = user.personal_passcode_hash?.trim() ?? ''
+  const raw = user.personal_passcode?.trim() ?? ''
+
+  if (hashed) {
+    try {
+      if (verifyPasscode(normalizedInput, hashed)) {
+        return true
+      }
+    } catch (error) {
+      console.error('[Login Error]', error)
+    }
+  }
+
+  return raw.length > 0 && raw === normalizedInput
 }
 
 async function buildGroupEntriesForUser(userId: string): Promise<GroupEntry[]> {
@@ -66,10 +94,17 @@ async function buildGroupEntriesForUser(userId: string): Promise<GroupEntry[]> {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const last4 = typeof body?.last4 === 'string' ? body.last4.trim() : ''
+    const last4Input = typeof body?.last4 === 'string' ? body.last4.trim() : ''
+    const last4 = last4Input.replace(/\D/g, '').slice(-4)
     const method = (body?.method === 'personal' ? 'personal' : 'group') as LoginMethod
     const personalPasscode = typeof body?.personalPasscode === 'string' ? body.personalPasscode.trim() : ''
     const groupPasscode = typeof body?.groupPasscode === 'string' ? body.groupPasscode.trim() : ''
+
+    console.log('[Login Attempt]', {
+      method,
+      last4,
+      passcode: method === 'personal' ? personalPasscode : groupPasscode,
+    })
 
     if (!/^\d{4}$/.test(last4)) {
       return NextResponse.json({ ok: false, message: 'Enter the last 4 digits of your mobile.' }, { status: 400 })
@@ -91,31 +126,47 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: false, message: 'Enter your personal passcode.' }, { status: 400 })
       }
 
-      const usersResult = await supabase
+      const preferredUsersResult = await supabase
         .from('users')
-        .select('id, full_name, phone_number, phone_last4, has_personal_passcode, personal_passcode_hash, created_at')
+        .select('id, full_name, phone_number, phone_last4, has_personal_passcode, personal_passcode_hash, personal_passcode, created_at')
         .eq('phone_last4', last4)
         .order('created_at', { ascending: false })
         .limit(10)
 
-      if (usersResult.error) {
-        console.error('[Nearby][API][Enter] users lookup failed:', usersResult.error)
+      let usersData = preferredUsersResult.data as UserLoginRow[] | null
+      let usersError = preferredUsersResult.error as { code?: string; message?: string } | null
+
+      if (usersError?.code === '42703') {
+        const fallbackUsersResult = await supabase
+          .from('users')
+          .select('id, full_name, phone_number, phone_last4, has_personal_passcode, personal_passcode_hash, created_at')
+          .eq('phone_last4', last4)
+          .order('created_at', { ascending: false })
+          .limit(10)
+
+        usersData = fallbackUsersResult.data as UserLoginRow[] | null
+        usersError = fallbackUsersResult.error as { code?: string; message?: string } | null
+      }
+
+      if (usersError) {
+        console.error('[Login Error]', usersError)
         return NextResponse.json({ ok: false, message: 'We could not complete this just now. Please try again.' }, { status: 500 })
       }
 
-      const users = (usersResult.data ?? []) as Array<{
-        id: string
-        full_name: string | null
-        phone_number: string | null
-        phone_last4: string | null
-        has_personal_passcode: boolean | null
-        personal_passcode_hash: string | null
-      }>
-
-      const matchedUser = users.find((u) => {
-        if (!u.has_personal_passcode || !u.personal_passcode_hash) return false
-        return verifyPasscode(personalPasscode, u.personal_passcode_hash)
+      const users = usersData ?? []
+      console.log('[DB Result]', {
+        method,
+        count: users.length,
+        users: users.map((user) => ({
+          id: user.id,
+          phone_last4: user.phone_last4,
+          has_personal_passcode: user.has_personal_passcode,
+          has_hash: Boolean(user.personal_passcode_hash),
+          has_raw: Boolean(user.personal_passcode),
+        })),
       })
+
+      const matchedUser = users.find((user) => matchesPersonalPasscode(user, personalPasscode))
 
       if (!matchedUser) {
         return NextResponse.json({ ok: false, message: 'Incorrect details.' }, { status: 401 })
@@ -164,6 +215,11 @@ export async function POST(request: NextRequest) {
       .from('members')
       .select('id, display_name, group_id, user_id')
       .eq('phone_last4', last4)
+
+    console.log('[DB Result]', {
+      method,
+      count: (membersResult.data ?? []).length,
+    })
 
     if (membersResult.error) {
       console.error('[Nearby][API][Enter] members lookup failed:', membersResult.error)
