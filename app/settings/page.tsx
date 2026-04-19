@@ -177,6 +177,18 @@ function SettingsPage() {
 
       let userId = ''
       let profileSource: { full_name?: string; phone_number?: string } | null = null
+      let parsedRegister: RegisterData | null = null
+
+      if (rawRegister) {
+        parsedRegister = JSON.parse(rawRegister) as RegisterData
+        if (parsedRegister?.userId) {
+          userId = parsedRegister.userId
+          profileSource = {
+            full_name: parsedRegister.userName,
+            phone_number: parsedRegister.phone,
+          }
+        }
+      }
 
       if (rawSession) {
         const parsed = JSON.parse(rawSession) as Session
@@ -189,16 +201,18 @@ function SettingsPage() {
           .eq('id', parsed.memberId)
           .maybeSingle()
 
-        if (memberError || !member?.user_id) {
-          console.error('[Nearby][Settings] Failed to load member info:', memberError)
-          throw new Error('SETTINGS_MEMBER_LOAD_FAILED')
+        if (!memberError && member?.user_id) {
+          userId = member.user_id as string
+          profileSource = {
+            full_name: (member.users as { full_name?: string; phone_number?: string } | null)?.full_name ?? profileSource?.full_name,
+            phone_number: (member.users as { full_name?: string; phone_number?: string } | null)?.phone_number ?? profileSource?.phone_number,
+          }
+        } else {
+          console.warn('[Nearby][Settings] Member lookup unavailable, using register fallback:', memberError)
         }
-
-        userId = member.user_id as string
-        profileSource = member.users as { full_name?: string; phone_number?: string } | null
       } else if (rawRegister) {
-        const reg = JSON.parse(rawRegister) as RegisterData
-        userId = reg.userId
+        const reg = parsedRegister ?? (JSON.parse(rawRegister) as RegisterData)
+        userId = reg.userId || userId
 
         if (!userId) {
           throw new Error('SETTINGS_USER_ID_MISSING')
@@ -219,6 +233,10 @@ function SettingsPage() {
           full_name: userOnly.full_name ?? reg.userName,
           phone_number: userOnly.phone_number ?? reg.phone,
         }
+      }
+
+      if (!userId) {
+        throw new Error('SETTINGS_USER_ID_MISSING')
       }
 
       if (userId && (!profileSource?.full_name || !profileSource?.phone_number)) {
