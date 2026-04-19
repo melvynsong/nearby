@@ -1,15 +1,23 @@
 import Link from 'next/link'
 import ShowcaseOptionCard, { type ShowcaseCardProps } from '@/components/showcase/ShowcaseOptionCard'
-import { getAvailableShowcases } from '@/lib/showcase-config'
+import { getAvailableShowcases, type ShowcaseConfig } from '@/lib/showcase-config'
 import { withBasePath } from '@/lib/base-path'
+import { getServerSupabaseClient } from '@/lib/server-supabase'
 
 export const metadata = {
   title: 'Nearby Food Showcases',
   description: 'Curated Singapore food showcases — top dishes loved by the community.',
 }
 
-export default function DiscoverPage() {
-  const showcases = getAvailableShowcases()
+export default async function DiscoverPage() {
+  let showcases: ShowcaseConfig[] = []
+
+  try {
+    const db = getServerSupabaseClient()
+    showcases = await getAvailableShowcases(db, 5)
+  } catch (err) {
+    console.error('[Showcase] Failed to build showcase list:', err)
+  }
 
   return (
     <main className="min-h-screen bg-[#0f1f3d] text-white">
@@ -36,7 +44,7 @@ export default function DiscoverPage() {
           </span>
         </div>
         <h1 className="text-3xl font-bold leading-tight tracking-tight text-white">
-          Singapore's<br />
+          Singapore&apos;s<br />
           <span
             className="bg-clip-text text-transparent"
             style={{ backgroundImage: 'linear-gradient(90deg, #fbbf24, #f97316)' }}
@@ -45,12 +53,18 @@ export default function DiscoverPage() {
           </span>
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-white/55 max-w-xs">
-          Curated food showcases built from what Singapore's food community actually loves and revisits.
+          Curated food showcases built from what Singapore&apos;s food community actually loves and revisits.
         </p>
       </section>
 
       {/* Showcase cards */}
       <section className="px-5 pb-16 space-y-4">
+        {!showcases.length && (
+          <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-6 text-sm text-white/70">
+            We are preparing showcase categories from recent additions. Please check back soon.
+          </div>
+        )}
+
         {showcases.map((config, i) => {
           // Serialize only plain fields — functions cannot cross server→client boundary
           const cardProps: ShowcaseCardProps = {

@@ -1,56 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServiceRoleSupabaseClient } from '@/lib/server-supabase'
-import { getShowcaseConfig } from '@/lib/showcase-config'
+import { getShowcaseConfigByKey } from '@/lib/showcase-config'
 import { rankShowcaseItems, type RawShowcaseRow } from '@/lib/showcase-utils'
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ key: string }> },
 ) {
-  const { key } = await params
-  const config = getShowcaseConfig(key)
-
-  if (!config) {
-    return NextResponse.json({ ok: false, message: 'Showcase not found.' }, { status: 404 })
-  }
-
   try {
     const db = getServiceRoleSupabaseClient()
+    const { key } = await params
+    const config = await getShowcaseConfigByKey(db, key)
 
-    // 1. Find food_category IDs that match the dish aliases (case-insensitive)
-    const aliasPatterns = config.dishAliases.map((a) => a.toLowerCase())
-
-    const { data: catRows, error: catErr } = await db
-      .from('food_categories')
-      .select('id, name')
-
-    if (catErr) {
-      console.error('[Showcase] food_categories fetch error:', catErr)
-      return NextResponse.json({ ok: false, message: 'Data fetch failed.' }, { status: 500 })
+    if (!config) {
+      return NextResponse.json({ ok: false, message: 'Showcase not found.' }, { status: 404 })
     }
 
-    const matchingCatIds = (catRows ?? [])
-      .filter((c: { id: string; name: string }) =>
-        aliasPatterns.includes(c.name.toLowerCase().trim()),
-      )
-      .map((c: { id: string; name: string }) => ({ id: c.id, name: c.name }))
-
-    if (!matchingCatIds.length) {
-      return NextResponse.json({
-        ok: true,
-        items: [],
-        title: config.fullTitle(0),
-        config: { key: config.key, tagline: config.tagline },
-      })
-    }
-
-    const catIdList = matchingCatIds.map((c) => c.id)
-
-    // 2. Get place_ids linked to these categories, with the dish name
+    // 1. Get place_ids linked to this category
     const { data: pcRows, error: pcErr } = await db
       .from('place_categories')
       .select('place_id, category_id')
-      .in('category_id', catIdList)
+      .eq('category_id', config.categoryId)
 
     if (pcErr) {
       console.error('[Showcase] place_categories fetch error:', pcErr)
@@ -59,10 +29,7 @@ export async function GET(
 
     const placeIdToDishName = new Map<string, string>()
     for (const row of (pcRows ?? []) as { place_id: string; category_id: string }[]) {
-      if (!placeIdToDishName.has(row.place_id)) {
-        const cat = matchingCatIds.find((c) => c.id === row.category_id)
-        placeIdToDishName.set(row.place_id, cat?.name ?? config.title)
-      }
+      placeIdToDishName.set(row.place_id, config.title)
     }
 
     const placeIds = [...placeIdToDishName.keys()]
@@ -75,7 +42,7 @@ export async function GET(
       })
     }
 
-    // 3. Fetch place data (name, address, coords, photos, rating)
+    // 2. Fetch place data (name, address, coords, photos, rating)
     const { data: placeRows, error: placeErr } = await db
       .from('places')
       .select('id, name, formatted_address, lat, lng, photo_urls, google_rating, google_rating_count')
@@ -86,7 +53,7 @@ export async function GET(
       return NextResponse.json({ ok: false, message: 'Data fetch failed.' }, { status: 500 })
     }
 
-    // 4. Count recommendations (saves) per place
+    // 3. Count recommendations (saves) per place
     const { data: recCounts, error: recErr } = await db
       .from('recommendations')
       .select('place_id')
@@ -101,7 +68,7 @@ export async function GET(
       savesByPlaceId.set(row.place_id, (savesByPlaceId.get(row.place_id) ?? 0) + 1)
     }
 
-    // 5. Assemble raw rows
+    // 4. Assemble raw rows
     const rawRows: RawShowcaseRow[] = (placeRows ?? [])
       .filter((p: { google_rating?: number | null }) => p.google_rating != null || savesByPlaceId.get((p as { id: string }).id) != null)
       .map((p: {
@@ -121,7 +88,7 @@ export async function GET(
         saveCount: savesByPlaceId.get(p.id) ?? 0,
       }))
 
-    // 6. Rank
+    // 5. Rank
     const items = rankShowcaseItems(rawRows, config.rankingStrategy, config.maxItemsToShow)
 
     // Only publish showcase if we meet minimum threshold
@@ -131,7 +98,15 @@ export async function GET(
         items: [],
         title: config.fullTitle(0),
         insufficient: true,
-        config: { key: config.key, tagline: config.tagline },
+        config: {
+          key: config.key,
+          title: config.title,
+          tagline: config.tagline,
+          description: config.editorialDescription,
+          heroGradientFrom: config.heroGradientFrom,
+          heroGradientTo: config.heroGradientTo,
+          emoji: config.emoji,
+        },
       })
     }
 
@@ -141,7 +116,15 @@ export async function GET(
       ok: true,
       items,
       title: config.fullTitle(items.length),
-      config: { key: config.key, tagline: config.tagline, description: config.editorialDescription },
+      config: {
+        key: config.key,
+        title: config.title,
+        tagline: config.tagline,
+        description: config.editorialDescription,
+        heroGradientFrom: config.heroGradientFrom,
+        heroGradientTo: config.heroGradientTo,
+        emoji: config.emoji,
+      },
     })
   } catch (err) {
     console.error('[Showcase] Unexpected error:', err)

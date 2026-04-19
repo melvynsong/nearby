@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback, use } from 'react'
 import Link from 'next/link'
 import ShowcasePhotoMosaic from '@/components/showcase/ShowcasePhotoMosaic'
 import ShowcaseLocationPrompt from '@/components/showcase/ShowcaseLocationPrompt'
-import { getShowcaseConfig } from '@/lib/showcase-config'
 import { attachDistances, type ShowcaseItem } from '@/lib/showcase-utils'
 import { apiPath, withBasePath } from '@/lib/base-path'
 
@@ -17,7 +16,24 @@ type ShowcaseResponse = {
   items: ShowcaseItem[]
   title: string
   insufficient?: boolean
-  config: { key: string; tagline: string; description?: string }
+  config: {
+    key: string
+    title: string
+    tagline: string
+    description?: string
+    heroGradientFrom: string
+    heroGradientTo: string
+    emoji: string
+  }
+}
+
+function keyToTitle(key: string): string {
+  const withoutSuffix = key.replace(/-[a-f0-9]{8}$/, '')
+  return withoutSuffix
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(' ')
 }
 
 function useShowcaseLocation(
@@ -71,12 +87,13 @@ function useShowcaseLocation(
 
 export default function ShowcasePage({ params }: { params: Promise<{ key: string }> }) {
   const { key } = use(params)
-  const config = getShowcaseConfig(key)
+  const fallbackTitle = keyToTitle(key)
 
   const [data, setData] = useState<ShowcaseResponse | null>(null)
   const [items, setItems] = useState<ShowcaseItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [notFound, setNotFound] = useState(false)
   const [descriptionsLoaded, setDescriptionsLoaded] = useState(false)
 
   // Fetch showcase data
@@ -84,11 +101,22 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
     let cancelled = false
     setLoading(true)
     setError(false)
+    setNotFound(false)
+    setDescriptionsLoaded(false)
 
     fetch(apiPath(`/api/showcase/${key}`))
-      .then((r) => r.json())
-      .then((json: ShowcaseResponse) => {
+      .then(async (r) => ({ ok: r.ok, status: r.status, json: await r.json() as ShowcaseResponse }))
+      .then(({ ok, status, json }) => {
         if (cancelled) return
+        if (!ok) {
+          if (status === 404) {
+            setNotFound(true)
+          } else {
+            setError(true)
+          }
+          setLoading(false)
+          return
+        }
         setData(json)
         setItems(json.items ?? [])
         setLoading(false)
@@ -132,7 +160,7 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
 
   const { showPrompt, locating, handleAllow, handleDecline } = useShowcaseLocation(items, setItems)
 
-  if (!config) {
+  if (notFound) {
     return (
       <main className="min-h-screen bg-white px-5 py-16 text-center">
         <p className="text-neutral-500">Showcase not found.</p>
@@ -141,13 +169,21 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
     )
   }
 
+  const config = data?.config
+  const heroGradientFrom = config?.heroGradientFrom ?? '#1f355d'
+  const heroGradientTo = config?.heroGradientTo ?? '#0f3b58'
+  const heroEmoji = config?.emoji ?? '🍽️'
+  const heroTagline = config?.tagline ?? 'Top category by additions'
+  const heroDescription = config?.description
+  const heroTitle = loading ? `${heroEmoji} ${fallbackTitle || 'Showcase'}` : (data?.title ?? `${heroEmoji} ${fallbackTitle || 'Showcase'}`)
+
   return (
     <main className="min-h-screen bg-[#f8f7f5] pb-20">
 
       {/* Hero */}
       <div
         className="relative overflow-hidden px-5 pb-10 pt-10"
-        style={{ background: `linear-gradient(160deg, ${config.heroGradientFrom} 0%, ${config.heroGradientTo} 100%)` }}
+        style={{ background: `linear-gradient(160deg, ${heroGradientFrom} 0%, ${heroGradientTo} 100%)` }}
       >
         {/* Back */}
         <Link
@@ -162,26 +198,26 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
 
         {/* Emoji decoration */}
         <div className="absolute right-8 top-8 text-8xl opacity-15 select-none" aria-hidden>
-          {config.emoji}
+          {heroEmoji}
         </div>
 
         {/* Tagline */}
         <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1">
           <span className="h-1.5 w-1.5 rounded-full bg-white/70" />
           <span className="text-[11px] font-semibold uppercase tracking-widest text-white/80">
-            {config.tagline}
+            {heroTagline}
           </span>
         </div>
 
         {/* Title */}
         <h1 className="text-2xl font-bold leading-tight text-white drop-shadow-sm">
-          {loading ? `${config.emoji} ${config.title}` : (data?.title ?? `${config.emoji} ${config.title}`)}
+          {heroTitle}
         </h1>
 
         {/* Description */}
-        {config.editorialDescription && (
+        {heroDescription && (
           <p className="mt-3 max-w-sm text-sm leading-relaxed text-white/70">
-            {config.editorialDescription}
+            {heroDescription}
           </p>
         )}
 
@@ -230,7 +266,7 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
         {/* Insufficient data */}
         {!loading && !error && data?.insufficient && (
           <div className="rounded-2xl border border-neutral-200 bg-white p-8 text-center">
-            <p className="text-3xl mb-3">{config.emoji}</p>
+            <p className="text-3xl mb-3">{heroEmoji}</p>
             <p className="text-sm font-semibold text-neutral-800">Building this showcase</p>
             <p className="mt-1 text-xs text-neutral-500">
               We need a few more community saves before we can publish this showcase.
@@ -248,7 +284,7 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
         {/* Empty state — data fetched but no items (not insufficient) */}
         {!loading && !error && !data?.insufficient && items.length === 0 && (
           <div className="rounded-2xl border border-neutral-200 bg-white p-8 text-center">
-            <p className="text-3xl mb-3">{config.emoji}</p>
+            <p className="text-3xl mb-3">{heroEmoji}</p>
             <p className="text-sm text-neutral-600">No places found for this showcase yet.</p>
           </div>
         )}
