@@ -3,6 +3,43 @@ import { getServiceRoleSupabaseClient } from '@/lib/server-supabase'
 import { getShowcaseConfigByKey } from '@/lib/showcase-config'
 import { rankShowcaseItems, type RawShowcaseRow } from '@/lib/showcase-utils'
 
+type PlaceRow = {
+  id: string
+  name: string
+  formatted_address: string | null
+  lat: number | null
+  lng: number | null
+  photo_urls: string[]
+  google_place_id: string | null
+  google_rating: number | null
+  google_rating_count: number | null
+}
+
+async function fetchGoogleRating(
+  googlePlaceId: string,
+  apiKey: string,
+): Promise<{ rating: number | null; ratingCount: number | null }> {
+  const fields = ['rating', 'userRatingCount'].join(',')
+  const res = await fetch(`https://places.googleapis.com/v1/places/${googlePlaceId}`, {
+    method: 'GET',
+    headers: {
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': fields,
+    },
+    signal: AbortSignal.timeout(6000),
+  })
+
+  if (!res.ok) {
+    return { rating: null, ratingCount: null }
+  }
+
+  const data = await res.json() as { rating?: number; userRatingCount?: number }
+  return {
+    rating: typeof data.rating === 'number' ? data.rating : null,
+    ratingCount: typeof data.userRatingCount === 'number' ? data.userRatingCount : null,
+  }
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ key: string }> },
@@ -45,12 +82,38 @@ export async function GET(
     // 2. Fetch place data (name, address, coords, photos, rating)
     const { data: placeRows, error: placeErr } = await db
       .from('places')
-      .select('id, name, formatted_address, lat, lng, photo_urls, google_rating, google_rating_count')
+      .select('id, name, formatted_address, lat, lng, photo_urls, google_place_id, google_rating, google_rating_count')
       .in('id', placeIds)
 
     if (placeErr) {
       console.error('[Showcase] places fetch error:', placeErr)
       return NextResponse.json({ ok: false, message: 'Data fetch failed.' }, { status: 500 })
+    }
+
+    // 2b. Backfill missing Google ratings for older place rows.
+    const placesWithRatings: PlaceRow[] = [...(placeRows ?? []) as PlaceRow[]]
+    const googleApiKey = process.env.GOOGLE_PLACES_SERVER_KEY
+    if (googleApiKey) {
+      const missingRatingRows = placesWithRatings.filter((p) => p.google_rating == null && typeof p.google_place_id === 'string' && p.google_place_id)
+      for (const row of missingRatingRows) {
+        try {
+          const { rating, ratingCount } = await fetchGoogleRating(row.google_place_id as string, googleApiKey)
+          if (rating == null && ratingCount == null) continue
+
+          row.google_rating = rating
+          row.google_rating_count = ratingCount
+
+          await db
+            .from('places')
+            .update({
+              google_rating: rating,
+              google_rating_count: ratingCount,
+            })
+            .eq('id', row.id)
+        } catch {
+          // Non-fatal: continue with available data
+        }
+      }
     }
 
     // 3. Count unique member recommendations (saves) per place.
@@ -77,7 +140,7 @@ export async function GET(
     }
 
     // 4. Assemble raw rows
-    const rawRows: RawShowcaseRow[] = (placeRows ?? [])
+    const rawRows: RawShowcaseRow[] = placesWithRatings
       .filter((p: { google_rating?: number | null }) => p.google_rating != null || savesByPlaceId.get((p as { id: string }).id) != null)
       .map((p: {
         id: string; name: string; formatted_address: string | null;
