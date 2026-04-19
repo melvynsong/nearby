@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
 import TransformedImage from '@/components/TransformedImage'
@@ -94,6 +94,28 @@ function isGeneric(name: string): boolean {
   return GENERIC_BLACKLIST.has(name.toLowerCase().trim())
 }
 
+// ─── Mode resolution ────────────────────────────────────────────────────────
+
+function isValidUUID(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+}
+
+type PlacePageMode =
+  | { mode: 'create'; editPlaceId: null }
+  | { mode: 'edit'; editPlaceId: string }
+
+function resolvePlaceMode(
+  params: { get(key: string): string | null },
+): PlacePageMode {
+  const editId = params.get('editPlaceId')
+  if (editId && isValidUUID(editId)) {
+    return { mode: 'edit', editPlaceId: editId }
+  }
+  return { mode: 'create', editPlaceId: null }
+}
+
+// ─── AI response normalisation ────────────────────────────────────────────────
+
 function parseAiResponse(data: Record<string, unknown>): AiResult {
   const confidence = typeof data.confidence === 'number' ? data.confidence : null
 
@@ -110,10 +132,20 @@ function parseAiResponse(data: Record<string, unknown>): AiResult {
   return { dish, suggestions: rawAlts, confidence, reasoning }
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Component (inner) ────────────────────────────────────────────────────────
 
-export default function AddPlace() {
+function AddPlaceInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // ── Single source of truth for page mode — resolved ONCE on mount
+  const _modeRef = useRef<PlacePageMode | null>(null)
+  if (_modeRef.current === null) {
+    _modeRef.current = resolvePlaceMode(searchParams)
+  }
+  const mode        = _modeRef.current.mode
+  const editPlaceId = _modeRef.current.editPlaceId
+
   const [session] = useState<Session | null>(() => {
     if (typeof window === 'undefined') return null
     const raw = localStorage.getItem('nearby_session')
@@ -157,8 +189,8 @@ export default function AddPlace() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [showSaveErrorCard, setShowSaveErrorCard] = useState(false)
-  const [editPlaceId, setEditPlaceId] = useState('')
-  const [loadingEdit, setLoadingEdit] = useState(false)
+  // loadingEdit starts true in edit mode to prevent empty-form flash before hydration
+  const [loadingEdit, setLoadingEdit] = useState(mode === 'edit')
   const [editDenied, setEditDenied] = useState(false)
 
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null)
@@ -168,13 +200,30 @@ export default function AddPlace() {
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const galleryInputRef = useRef<HTMLInputElement>(null)
 
+  // ── Mode resolution logging + guard (runs once on mount)
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const params = new URLSearchParams(window.location.search)
-    const nextEditPlaceId = params.get('editPlaceId') ?? ''
-    if (nextEditPlaceId) {
-      setEditPlaceId(nextEditPlaceId)
+    const rawSearch = typeof window !== 'undefined' ? window.location.search : ''
+    console.log('[PlaceModeResolve]', {
+      route: '/add-place',
+      search_params: rawSearch,
+      resolved_mode: mode,
+      edit_place_id: editPlaceId,
+    })
+
+    if (mode === 'create') {
+      // Guard: URL had an editPlaceId that failed UUID validation — strip it
+      const rawId = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('editPlaceId')
+        : null
+      if (rawId) {
+        console.warn('[PlaceModeGuard]', { invalid_edit_id_detected: rawId, fallback_to_create: true })
+        router.replace(withBasePath('/add-place'))
+      } else {
+        console.log('[PlaceCreateEntry]', { confirmed_clean_state: true })
+      }
     }
+  // mode and editPlaceId are stable consts derived once — this must run only on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -230,10 +279,11 @@ export default function AddPlace() {
   }, [session, router])
 
   useEffect(() => {
-    if (!session?.memberId || !session?.groupId || !editPlaceId) return
+    // Only runs in edit mode; session is required
+    if (mode !== 'edit' || !editPlaceId) return
+    if (!session?.memberId || !session?.groupId) return
 
     const loadEditData = async () => {
-      setLoadingEdit(true)
       setEditDenied(false)
       setError('')
 
@@ -252,9 +302,11 @@ export default function AddPlace() {
         if (!response.ok || !result?.ok) {
           if (response.status === 403) {
             setEditDenied(true)
+            setLoadingEdit(false)
             return
           }
           setError(result?.message ?? 'Could not load this place for editing.')
+          setLoadingEdit(false)
           return
         }
 
@@ -268,6 +320,7 @@ export default function AddPlace() {
           setCustomDish('')
         }
         setFlowState('analysis_success')
+        console.log('[PlaceEditLoad]', { place_id: editPlaceId, data_loaded: true })
       } catch (loadError) {
         console.error('[Nearby][PlaceEdit] Load failed:', loadError)
         setError('Could not load this place for editing.')
@@ -277,7 +330,7 @@ export default function AddPlace() {
     }
 
     void loadEditData()
-  }, [session?.memberId, session?.groupId, editPlaceId])
+  }, [mode, editPlaceId, session?.memberId, session?.groupId])
 
   // ── Run OpenAI analysis
   const runAnalysis = useCallback(async (file: File) => {
@@ -519,10 +572,8 @@ export default function AddPlace() {
           <span>Back</span>
         </button>
 
-        <h1 className="text-2xl font-bold tracking-tight text-neutral-900">{editPlaceId ? 'Edit Food Spot' : 'Add Food Spot'}</h1>
-        <p className="mt-1 text-sm text-neutral-500">{editPlaceId ? 'Update details and save to this same place.' : 'Start with a photo.'}</p>
-
-        {loadingEdit && <p className="mt-3 text-sm text-neutral-500">Loading place details...</p>}
+        <h1 className="text-2xl font-bold tracking-tight text-neutral-900">{mode === 'edit' ? 'Edit Food Spot' : 'Add Food Spot'}</h1>
+        <p className="mt-1 text-sm text-neutral-500">{mode === 'edit' ? 'Update details and save to this same place.' : 'Start with a photo.'}</p>
 
         {editDenied && (
           <div className="mt-4">
@@ -535,6 +586,20 @@ export default function AddPlace() {
           </div>
         )}
 
+        {loadingEdit ? (
+          // ── Edit mode: block form render until data is hydrated (prevents empty-form flash)
+          <div className="mt-5 space-y-4">
+            <section className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm flex items-center justify-center py-16">
+              <div className="flex flex-col items-center gap-3">
+                <div
+                  className="h-8 w-8 animate-spin rounded-full"
+                  style={{ border: '2px solid #e5e7eb', borderTopColor: '#1f355d' }}
+                />
+                <p className="text-sm text-neutral-400">Loading place details…</p>
+              </div>
+            </section>
+          </div>
+        ) : (
         <div className={`mt-5 space-y-4 ${editDenied ? 'pointer-events-none opacity-40' : ''}`}>
 
           {/* ── Photo section ──────────────────────────────────────── */}
@@ -878,11 +943,12 @@ export default function AddPlace() {
               disabled={saving || loadingDetails || isBlocking}
               className="w-full rounded-xl bg-[#1f355d] hover:bg-[#162746] px-4 py-3 text-sm font-semibold text-white transition-all duration-300 disabled:opacity-40"
             >
-              {saving ? 'Saving...' : editPlaceId ? 'Save changes' : 'Save food spot'}
+              {saving ? 'Saving...' : mode === 'edit' ? 'Save changes' : 'Save food spot'}
             </button>
           )}
 
         </div>
+        )} {/* end loadingEdit conditional */}
       </div>
 
       {/* ── Blocking analysis overlay ────────────────────────────────── */}
@@ -914,5 +980,15 @@ export default function AddPlace() {
         }}
       />
     </main>
+  )
+}
+
+// ─── Suspense wrapper (required by Next.js for useSearchParams) ───────────────
+
+export default function AddPlace() {
+  return (
+    <Suspense>
+      <AddPlaceInner />
+    </Suspense>
   )
 }
