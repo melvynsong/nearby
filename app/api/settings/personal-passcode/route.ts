@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     // Use a user-scoped client so auth.uid() satisfies the RLS UPDATE policy.
     // Falls back gracefully if service-role key is present (which bypasses RLS).
     const userClient = getUserSupabaseClient(bearerToken)
-    const { error: updateError } = await userClient
+    const preferredUpdate = await userClient
       .from('users')
       .update({
         personal_passcode_hash,
@@ -64,6 +64,20 @@ export async function POST(request: NextRequest) {
         has_personal_passcode: true,
       })
       .eq('id', verifiedUserId)
+
+    let updateError = preferredUpdate.error
+
+    if (updateError?.code === 'PGRST204' || updateError?.code === '42703') {
+      const fallbackUpdate = await userClient
+        .from('users')
+        .update({
+          personal_passcode_hash,
+          has_personal_passcode: true,
+        })
+        .eq('id', verifiedUserId)
+
+      updateError = fallbackUpdate.error
+    }
 
     if (updateError) {
       console.error('[Nearby][API][PersonalPasscode] update failed:', updateError)
