@@ -74,10 +74,19 @@ export default function TransformedImage({
   const baseScale = useMemo(() => getCoverBaseScale(frameSize, imageSize), [frameSize, imageSize])
   const baseWidth = imageSize.width * baseScale
   const baseHeight = imageSize.height * baseScale
+  const hasMetrics = Boolean(baseWidth && baseHeight)
 
   return (
     <div ref={frameRef} className={`relative w-full overflow-hidden ${className}`}>
-      {Boolean(baseWidth && baseHeight) && (
+      {!hasMetrics && (
+        <img
+          src={src}
+          alt={alt}
+          draggable={false}
+          className={`absolute inset-0 h-full w-full select-none object-cover ${imageClassName}`}
+        />
+      )}
+      {hasMetrics && (
         <div
           className="absolute left-1/2 top-1/2"
           style={{ transform: 'translate3d(-50%, -50%, 0)' }}

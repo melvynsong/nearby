@@ -362,7 +362,7 @@ function AddPlaceInner() {
 
   useEffect(() => {
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl)
+      if (previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previewUrl)
     }
   }, [previewUrl])
 
@@ -578,7 +578,7 @@ function AddPlaceInner() {
     setShowAdjustSheet(false)
     setPreviewImageSize(null)
 
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    if (previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previewUrl)
     setPreviewUrl(null)
 
     let processedFile = file
