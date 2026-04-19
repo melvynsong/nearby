@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     const supabase = getServerSupabaseClient()
     const groupResult = await supabase
       .from('groups')
-      .select('id, name, title, access_code, visibility')
+      .select('id, name, title, access_code, visibility, created_by_user_id')
       .eq('id', groupId)
       .maybeSingle()
 
@@ -67,6 +67,8 @@ export async function POST(request: NextRequest) {
           passcode: fallbackGroupResult.data.access_code,
           visibility: 'public',
         },
+        requesterRole: 'member',
+        members: [],
       })
     }
 
@@ -74,42 +76,67 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, message: 'Could not load group settings.' }, { status: 404 })
     }
 
-    const group = groupResult.data as { id: string; name: string; title?: string | null; access_code: string; visibility?: 'public' | 'private' | null }
+    const group = groupResult.data as {
+      id: string
+      name: string
+      title?: string | null
+      access_code: string
+      visibility?: 'public' | 'private' | null
+      created_by_user_id?: string | null
+    }
 
-    const pendingPreferred = await supabase
+    const preferredMemberships = await supabase
       .from('group_memberships')
-      .select('id, user_id, requested_at, member_id')
+      .select('user_id, status')
       .eq('group_id', groupId)
-      .eq('status', 'pending')
+      .eq('status', 'active')
 
-    const pendingRows = pendingPreferred.error?.code === '42703' || pendingPreferred.error?.code === 'PGRST204'
-      ? []
-      : (pendingPreferred.data ?? [])
+    let activeMemberships = (preferredMemberships.data ?? []) as Array<{ user_id: string; status?: string | null }>
+    if (preferredMemberships.error?.code === '42703' || preferredMemberships.error?.code === 'PGRST204') {
+      const fallbackMemberships = await supabase
+        .from('group_memberships')
+        .select('user_id')
+        .eq('group_id', groupId)
+      activeMemberships = ((fallbackMemberships.data ?? []) as Array<{ user_id: string }>).map((row) => ({
+        user_id: row.user_id,
+        status: 'active',
+      }))
+    }
+
+    const activeUserIds = Array.from(new Set(activeMemberships.map((row) => row.user_id).filter(Boolean)))
 
     const membersResult = await supabase
       .from('members')
-      .select('id, display_name, user_id')
+      .select('id, display_name, user_id, phone_number, phone_last4')
       .eq('group_id', groupId)
+      .in('user_id', activeUserIds.length > 0 ? activeUserIds : [''])
 
     const usersResult = await supabase
       .from('users')
       .select('id, full_name, phone_number')
-      .in('id', ((membersResult.data ?? []) as Array<{ user_id: string }>).map((m) => m.user_id))
+      .in('id', activeUserIds.length > 0 ? activeUserIds : [''])
 
-    const members = (membersResult.data ?? []) as Array<{ id: string; display_name: string; user_id: string }>
+    const members = (membersResult.data ?? []) as Array<{ id: string; display_name: string; user_id: string; phone_number?: string | null; phone_last4?: string | null }>
     const users = (usersResult.data ?? []) as Array<{ id: string; full_name: string | null; phone_number: string | null }>
 
-    const pending = pendingRows.map((row: any) => {
-      const member = members.find((m) => m.id === row.member_id)
-      const user = users.find((u) => u.id === row.user_id)
-      return {
-        id: row.id,
-        userId: row.user_id,
-        requestedAt: row.requested_at,
-        name: member?.display_name ?? user?.full_name ?? 'Member',
-        phoneNumber: user?.phone_number ?? '',
-      }
-    })
+    const membersByUserId = new Map(members.map((member) => [member.user_id, member]))
+    const usersById = new Map(users.map((user) => [user.id, user]))
+
+    const ownerUserId = group.created_by_user_id ?? ''
+    const normalizedMembers = activeUserIds
+      .map((userId) => {
+        const member = membersByUserId.get(userId)
+        const user = usersById.get(userId)
+        const phoneNumber = user?.phone_number ?? member?.phone_number ?? member?.phone_last4 ?? ''
+        return {
+          userId,
+          memberId: member?.id ?? '',
+          name: member?.display_name ?? user?.full_name ?? 'Member',
+          phoneNumber,
+          role: ownerUserId && ownerUserId === userId ? 'owner' : 'member',
+        }
+      })
+      .filter((row) => row.memberId)
 
     return NextResponse.json({
       ok: true,
@@ -120,7 +147,8 @@ export async function POST(request: NextRequest) {
         passcode: group.access_code,
         visibility: group.visibility ?? 'public',
       },
-      pending,
+      requesterRole: ownerUserId && ownerUserId === requesterUserId ? 'owner' : 'member',
+      members: normalizedMembers,
     })
   } catch (error) {
     console.error('[Group] settings read error:', error)

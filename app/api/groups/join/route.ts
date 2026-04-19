@@ -205,7 +205,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const nextStatus = isPrivate ? 'pending' : 'active'
+    const nextStatus = 'active'
 
     const preferredMembershipUpsert = await supabase
       .from('group_memberships')
@@ -245,16 +245,6 @@ export async function POST(request: NextRequest) {
       status: nextStatus,
     })
 
-    if (isPrivate) {
-      return NextResponse.json({
-        ok: true,
-        membershipStatus: 'pending',
-        groupId: targetGroup.id,
-        groupName: targetGroup.name,
-        message: 'Join request submitted. Waiting for approval.',
-      })
-    }
-
     return NextResponse.json({
       ok: true,
       membershipStatus: 'active',
@@ -262,7 +252,7 @@ export async function POST(request: NextRequest) {
       groupName: targetGroup.name,
       memberId,
       memberName,
-      message: 'Joined successfully.',
+      message: isPrivate ? 'Joined private group successfully.' : 'Joined successfully.',
     })
   } catch (error) {
     console.error('[Nearby][API][GroupJoin] Unexpected error:', error)

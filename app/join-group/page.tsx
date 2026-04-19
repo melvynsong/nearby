@@ -29,7 +29,6 @@ export default function JoinGroupPage() {
   const [passcode, setPasscode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [info, setInfo] = useState('')
   const [gated, setGated] = useState(false)
 
   useEffect(() => {
@@ -55,7 +54,6 @@ export default function JoinGroupPage() {
 
   const handleJoin = async () => {
     setError('')
-    setInfo('')
 
     const code = passcode.trim()
     if (!code) {
@@ -83,12 +81,6 @@ export default function JoinGroupPage() {
       const result = await response.json()
       if (!response.ok || !result?.ok) {
         setError(result?.message ?? 'We could not complete this just now. Please try again.')
-        setLoading(false)
-        return
-      }
-
-      if (result.membershipStatus === 'pending') {
-        setInfo(result?.message ?? 'Waiting for approval.')
         setLoading(false)
         return
       }
@@ -182,7 +174,6 @@ export default function JoinGroupPage() {
           </div>
 
           {error && <p className="mt-3 text-sm text-amber-700">{error}</p>}
-          {info && <p className="mt-3 text-sm text-[#1f355d]">{info}</p>}
 
           <button
             onClick={handleJoin}
