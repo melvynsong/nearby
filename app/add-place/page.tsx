@@ -258,9 +258,11 @@ function AddPlaceInner() {
       } else {
         // Clean state on create mode entry
         console.log('[PlaceCreateEntry]', { confirmed_clean_state: true })
-        if (previewUrl) URL.revokeObjectURL(previewUrl)
+        setPreviewUrl((prev) => {
+          if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
+          return null
+        })
         setSelectedFile(null)
-        setPreviewUrl(null)
         setImageTransform(DEFAULT_IMAGE_TRANSFORM)
         setIsTransformCustomized(false)
         setShowAdjustSheet(false)
@@ -284,7 +286,7 @@ function AddPlaceInner() {
       // Entering edit mode should show loading shell until data is hydrated
       setLoadingEdit(true)
     }
-  }, [mode, editPlaceId, previewUrl, router])
+  }, [mode, editPlaceId, router])
 
   // ── Load user groups for group selection
   useEffect(() => {
@@ -395,11 +397,14 @@ function AddPlaceInner() {
     const loadEditData = async () => {
       setEditDenied(false)
       setError('')
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 12000)
 
       try {
         const response = await fetch(apiPath('/api/places/edit'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({
             placeId: editPlaceId,
             memberId: session.memberId,
@@ -467,9 +472,14 @@ function AddPlaceInner() {
         })
         console.log('[PlaceEditLoad]', { place_id: editPlaceId, data_loaded: true })
       } catch (loadError) {
+        if ((loadError as { name?: string })?.name === 'AbortError') {
+          setError('Loading this place took too long. Please try again.')
+          return
+        }
         console.error('[Nearby][PlaceEdit] Load failed:', loadError)
         setError('Could not load this place for editing.')
       } finally {
+        clearTimeout(timeout)
         setLoadingEdit(false)
       }
     }
