@@ -186,8 +186,25 @@ export async function POST(request: NextRequest) {
         })),
       })
 
-      const matchedUser = users.find((user) => {
-        if (normalizePhoneNumber(user.phone_number ?? '') !== phoneNumber) return false
+      const phoneMatchedUsers = users.filter(
+        (user) => normalizePhoneNumber(user.phone_number ?? '') === phoneNumber,
+      )
+
+      const hasAnyStoredPersonalPasscode = phoneMatchedUsers.some((user) => {
+        return Boolean(user.personal_passcode_hash?.trim() || user.personal_passcode?.trim())
+      })
+
+      if (phoneMatchedUsers.length > 0 && !hasAnyStoredPersonalPasscode) {
+        return NextResponse.json(
+          {
+            ok: false,
+            message: 'This account has not set a personal passcode yet. Sign in with your group passcode first, then set a personal passcode in Settings.',
+          },
+          { status: 403 },
+        )
+      }
+
+      const matchedUser = phoneMatchedUsers.find((user) => {
         return matchesPersonalPasscode(user, personalPasscode)
       })
 
