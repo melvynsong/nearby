@@ -7,7 +7,6 @@ import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
 import GroupInviteActions from '@/components/GroupInviteActions'
 import { supabase } from '@/lib/supabase'
-import { resolveOnboardingState } from '@/lib/auth-guard'
 import { apiPath, withBasePath } from '@/lib/base-path'
 
 type Friend = {
@@ -62,7 +61,6 @@ export default function CreateGroup() {
   const [authUserName, setAuthUserName] = useState('')
   const [authUserPhone, setAuthUserPhone] = useState('')
   const [authAccessToken, setAuthAccessToken] = useState<string | null>(null)
-  const [passcodeGated, setPasscodeGated] = useState(false)
   const [groupName, setGroupName] = useState('')
   const [passcode, setPasscode] = useState('')
   const [friends, setFriends] = useState<Friend[]>([{ id: '1', name: '', phone: '' }])
@@ -123,16 +121,6 @@ export default function CreateGroup() {
         return
       }
 
-      // Require personal passcode before creating a group.
-      const onboarding = await resolveOnboardingState()
-      console.log('[Nearby][CreateGroup] onboarding state:', {
-        personalPasscodeSet: onboarding.personalPasscodeSet,
-        onboardingComplete: onboarding.onboardingComplete,
-      })
-      if (!onboarding.personalPasscodeSet) {
-        console.warn('[Nearby][CreateGroup] blocked: personal passcode not set')
-        setPasscodeGated(true)
-      }
     }
 
     void loadContext()
@@ -235,22 +223,6 @@ export default function CreateGroup() {
             onPrimary={() => router.push(withBasePath('/register'))}
             secondaryLabel="Sign In"
             onSecondary={() => router.push(withBasePath('/'))}
-          />
-        </div>
-      </main>
-    )
-  }
-
-  if (passcodeGated) {
-    return (
-      <main className="min-h-screen bg-[#f8f8f6]">
-        <AppHeader />
-        <div className="nearby-shell pt-10">
-          <ErrorState
-            title="Set your personal passcode first"
-            message="You need to set a personal passcode before you can create a group. This lets you log in to Nearby."
-            primaryLabel="Set my passcode"
-            onPrimary={() => router.push(withBasePath('/settings?setup=passcode'))}
           />
         </div>
       </main>
