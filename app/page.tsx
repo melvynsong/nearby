@@ -196,8 +196,17 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#f5f6f8] py-10">
       <div className="nearby-shell flex flex-col items-center">
-        <div className="mb-8 mt-2">
+        <div className="mb-6 mt-2">
           <BrandMark clickable={false} size="hero" />
+        </div>
+
+        <div className="mb-8 text-center px-2">
+          <h1 className="text-2xl font-bold tracking-tight text-[#1a2438] leading-snug">
+            Discover good places nearby, together.
+          </h1>
+          <p className="mt-3 text-sm text-[#677088] leading-relaxed">
+            Nearby helps you find, save, and share useful places around you — from food spots to meetup ideas and local finds. Build groups, add places, and make it easier for everyone to decide where to go next.
+          </p>
         </div>
 
         {registerAccount ? (

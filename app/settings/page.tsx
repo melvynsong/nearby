@@ -58,6 +58,28 @@ function SettingsPage() {
   const [groupPasscodeError, setGroupPasscodeError] = useState('')
   const [groupPasscodeSaved, setGroupPasscodeSaved] = useState(false)
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null)
+  const [showPasscode, setShowPasscode] = useState(false)
+  const [showGroupPasscode, setShowGroupPasscode] = useState(false)
+  const [groupMembersMap, setGroupMembersMap] = useState<Record<string, Array<{ id: string; display_name: string; has_personal_passcode: boolean }>>>({})
+  const [deleteConfirmGroupId, setDeleteConfirmGroupId] = useState<string | null>(null)
+  const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null)
+  const [deleteGroupError, setDeleteGroupError] = useState('')
+  const loadGroupMembers = async (groupId: string) => {
+    if (groupMembersMap[groupId]) return
+    const { data, error } = await supabase
+      .from('members')
+      .select('id, display_name, users ( has_personal_passcode )')
+      .eq('group_id', groupId)
+    if (error || !data) return
+    setGroupMembersMap((prev) => ({
+      ...prev,
+      [groupId]: (data as any[]).map((m) => ({
+        id: m.id as string,
+        display_name: (m.display_name as string) ?? '?',
+        has_personal_passcode: Boolean((m.users as any)?.has_personal_passcode),
+      })),
+    }))
+  }
 
   const [isGroupCreator, setIsGroupCreator] = useState(false)
   const [inviteGroupName, setInviteGroupName] = useState('')
@@ -374,8 +396,50 @@ function SettingsPage() {
     }
   }
 
-  const allGroups = session?.allGroups ?? (session ? [{ memberId: session.memberId, memberName: session.memberName, groupId: session.groupId, groupName: session.groupName }] : [])
+  const deleteGroup = async (group: { groupId: string; memberId: string; groupName: string }) => {
+    setDeleteGroupError('')
+    setDeletingGroupId(group.groupId)
+    try {
+      const response = await fetch(apiPath('/api/groups/delete'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId: group.groupId, memberId: group.memberId }),
+      })
+      const result = await response.json()
+      if (!response.ok || !result?.ok) {
+        setDeleteGroupError(result?.message ?? 'Something went wrong. Please try again.')
+        return
+      }
 
+      // Remove from session
+      const rawSession = localStorage.getItem('nearby_session')
+      if (rawSession) {
+        const parsed = JSON.parse(rawSession) as Session
+        const remaining = (parsed.allGroups ?? []).filter((g) => g.groupId !== group.groupId)
+        if (remaining.length > 0) {
+          const next = remaining[0]
+          const nextSession = { ...parsed, memberId: next.memberId, memberName: next.memberName, groupId: next.groupId, groupName: next.groupName, allGroups: remaining }
+          localStorage.setItem('nearby_session', JSON.stringify(nextSession))
+          localStorage.setItem('nearby_last_group_id', next.groupId)
+          window.location.replace(withBasePath('/nearby'))
+        } else {
+          localStorage.removeItem('nearby_session')
+          localStorage.removeItem('nearby_last_group_id')
+          window.location.replace(withBasePath('/'))
+        }
+      } else {
+        window.location.replace(withBasePath('/'))
+      }
+    } catch (error) {
+      console.error('[Nearby][Settings][DeleteGroup] Request failed:', error)
+      setDeleteGroupError('Something went wrong. Please try again.')
+    } finally {
+      setDeletingGroupId(null)
+      setDeleteConfirmGroupId(null)
+    }
+  }
+
+  const allGroups = session?.allGroups ?? (session ? [{ memberId: session.memberId, memberName: session.memberName, groupId: session.groupId, groupName: session.groupName }] : [])
   return (
     <main className="min-h-screen bg-[#f5f6f8] pb-20">
       <AppHeader
@@ -444,14 +508,25 @@ function SettingsPage() {
 
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-neutral-700">Personal passcode</label>
-                  <input
-                    type="password"
-                    value={personalPasscode}
-                    onChange={(e) => setPersonalPasscode(e.target.value)}
-                    placeholder="Leave blank to keep current passcode"
-                    className="w-full rounded-xl border border-[#d6ddeb] px-4 py-2.5 text-sm outline-none transition focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9]"
-                  />
-                  <p className="mt-1 text-xs text-neutral-500">This is your private login passcode.</p>
+                  <div className="relative">
+                    <input
+                      type={showPasscode ? 'text' : 'password'}
+                      value={personalPasscode}
+                      onChange={(e) => setPersonalPasscode(e.target.value)}
+                      placeholder="Leave blank to keep current passcode"
+                      className="w-full rounded-xl border border-[#d6ddeb] px-4 py-2.5 pr-12 text-sm outline-none transition focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPasscode((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-neutral-400 hover:text-neutral-600"
+                    >
+                      {showPasscode ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-neutral-400 leading-relaxed">
+                    This passcode is for easy social access within the app — not a high-security password. Please don&apos;t reuse a password from banking, email, or other services. Choose something easy for you to remember.
+                  </p>
                 </div>
 
               </div>
@@ -483,7 +558,13 @@ function SettingsPage() {
                     <div key={group.groupId} className="rounded-xl border border-[#dfe5f0] bg-[#fafbfd]">
                       <button
                         type="button"
-                        onClick={() => setExpandedGroupId((prev) => (prev === group.groupId ? null : group.groupId))}
+                        onClick={() => {
+                          setExpandedGroupId((prev) => {
+                            const next = prev === group.groupId ? null : group.groupId
+                            if (next) void loadGroupMembers(next)
+                            return next
+                          })
+                        }}
                         className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
                       >
                         <div>
@@ -494,18 +575,31 @@ function SettingsPage() {
                       </button>
 
                       {isExpanded && (
+                        <>
                         <div className="border-t border-[#e6ebf4] px-4 py-3">
                           {isCurrentGroup ? (
                             isGroupCreator ? (
                               <>
                                 <label className="mb-1.5 block text-sm font-medium text-neutral-700">New group passcode</label>
-                                <input
-                                  type="text"
-                                  value={groupPasscode}
-                                  onChange={(e) => setGroupPasscode(e.target.value)}
-                                  placeholder="Enter new group passcode"
-                                  className="w-full rounded-xl border border-[#d6ddeb] px-4 py-2.5 text-sm outline-none transition focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9]"
-                                />
+                                <div className="relative">
+                                  <input
+                                    type={showGroupPasscode ? 'text' : 'password'}
+                                    value={groupPasscode}
+                                    onChange={(e) => setGroupPasscode(e.target.value)}
+                                    placeholder="Enter new group passcode"
+                                    className="w-full rounded-xl border border-[#d6ddeb] px-4 py-2.5 pr-12 text-sm outline-none transition focus:border-[#1f355d] focus:ring-2 focus:ring-[#e7edf9]"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowGroupPasscode((v) => !v)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-neutral-400 hover:text-neutral-600"
+                                  >
+                                    {showGroupPasscode ? 'Hide' : 'Show'}
+                                  </button>
+                                </div>
+                                <p className="mt-2 text-xs text-neutral-400 leading-relaxed">
+                                  Group passcodes are for social convenience — not high security. Share it only with people you want in the group, and avoid reusing passwords from other services.
+                                </p>
 
                                 {groupPasscodeError && <p className="mt-3 text-sm text-amber-700">{groupPasscodeError}</p>}
                                 {groupPasscodeSaved && <p className="mt-3 text-sm text-[#1f355d]">Group passcode updated.</p>}
@@ -552,6 +646,75 @@ function SettingsPage() {
                             </button>
                           )}
                         </div>
+
+                        {/* Delete group */}
+                        <div className="mt-4 border-t border-[#e6ebf4] pt-3">
+                          {deleteConfirmGroupId === group.groupId ? (
+                            <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+                              <p className="text-sm font-semibold text-rose-800">Delete &ldquo;{group.groupName}&rdquo;?</p>
+                              <p className="mt-1 text-xs text-rose-700 leading-relaxed">
+                                All data associated with this group — places, members, and recommendations — will be permanently removed.
+                              </p>
+                              {deleteGroupError && (
+                                <p className="mt-2 text-xs text-rose-700 font-medium">{deleteGroupError}</p>
+                              )}
+                              <div className="mt-3 flex gap-2">
+                                <button
+                                  onClick={() => void deleteGroup(group)}
+                                  disabled={deletingGroupId === group.groupId}
+                                  className="flex-1 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50 transition-colors"
+                                >
+                                  {deletingGroupId === group.groupId ? 'Deleting…' : 'Yes, delete'}
+                                </button>
+                                <button
+                                  onClick={() => { setDeleteConfirmGroupId(null); setDeleteGroupError('') }}
+                                  className="flex-1 rounded-xl border border-[#d6ddeb] bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => { setDeleteConfirmGroupId(group.groupId); setDeleteGroupError('') }}
+                              className="w-full rounded-xl border border-rose-200 bg-rose-50/60 px-4 py-2.5 text-sm font-medium text-rose-700 hover:bg-rose-100 transition-colors"
+                            >
+                              Delete group
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Member badges */}
+                        {(() => {
+                          const members = groupMembersMap[group.groupId]
+                          if (!members || members.length === 0) return null
+                          return (
+                            <div className="mt-4 border-t border-[#e6ebf4] pt-3">
+                              <p className="text-xs font-medium text-neutral-500 mb-2">Members</p>
+                              <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+                                {members.map((m) => (
+                                  <div key={m.id} className="flex flex-col items-center gap-1 shrink-0">
+                                    <div
+                                      className={`h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold ${
+                                        m.has_personal_passcode
+                                          ? 'bg-[#d4edde] text-[#1a6e3a]'
+                                          : 'bg-[#e5e8ed] text-[#7a8398]'
+                                      }`}
+                                      title={m.has_personal_passcode ? `${m.display_name} — Joined` : `${m.display_name} — Invited`}
+                                    >
+                                      {m.display_name.slice(0, 2).toUpperCase()}
+                                    </div>
+                                    <span className={`text-[10px] leading-none font-medium ${m.has_personal_passcode ? 'text-[#1a6e3a]' : 'text-[#9aa0b0]'}`}>
+                                      {m.has_personal_passcode ? 'Joined' : 'Invited'}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        })()}
+                        </>
                       )}
                     </div>
                   )

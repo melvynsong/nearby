@@ -32,6 +32,7 @@ type Session = {
 type Rec = {
   note: string | null
   member_name: string
+  member_id: string
   created_at: string
 }
 
@@ -86,6 +87,9 @@ export default function NearbyHome() {
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set())
   const [showGroupMenu, setShowGroupMenu] = useState(false)
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false)
+  const [deletePlaceTarget, setDeletePlaceTarget] = useState<PlaceCard | null>(null)
+  const [deletingPlace, setDeletingPlace] = useState(false)
+  const [deletePlaceError, setDeletePlaceError] = useState('')
 
   // ── Data fetching ─────────────────────────────────────────────────────────────
 
@@ -113,8 +117,9 @@ export default function NearbyHome() {
           note,
           created_at,
           place_id,
+          member_id,
           places ( name, formatted_address, lat, lng, photo_urls, image_transforms, place_categories ( food_categories ( id, name ) ) ),
-          members ( display_name )
+          members ( id, display_name )
         `)
         .eq('group_id', groupId)
         .order('created_at', { ascending: false })
@@ -131,8 +136,9 @@ export default function NearbyHome() {
             note,
             created_at,
             place_id,
+            member_id,
             places ( name, formatted_address, lat, lng, photo_urls, place_categories ( food_categories ( id, name ) ) ),
-            members ( display_name )
+            members ( id, display_name )
           `)
           .eq('group_id', groupId)
           .order('created_at', { ascending: false })
@@ -173,6 +179,7 @@ export default function NearbyHome() {
         map.get(pid)!.recommendations.push({
           note: r.note,
           member_name: r.members?.display_name ?? '??',
+          member_id: (r.members?.id ?? r.member_id ?? '') as string,
           created_at: r.created_at,
         })
       }
@@ -402,6 +409,35 @@ export default function NearbyHome() {
     window.open(url, '_blank')
   }
 
+  const confirmDeletePlace = async () => {
+    if (!deletePlaceTarget || !activeGroup) return
+    setDeletePlaceError('')
+    setDeletingPlace(true)
+    try {
+      const response = await fetch(apiPath('/api/places/delete'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          placeId: deletePlaceTarget.place_id,
+          memberId: activeGroup.memberId,
+          groupId: activeGroup.groupId,
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok || !result?.ok) {
+        setDeletePlaceError(result?.message ?? 'Something went wrong. Please try again.')
+        return
+      }
+      setPlaces((prev) => prev.filter((p) => p.place_id !== deletePlaceTarget.place_id))
+      setDeletePlaceTarget(null)
+    } catch (err) {
+      console.error('[Nearby][DeletePlace] Request failed:', err)
+      setDeletePlaceError('Something went wrong. Please try again.')
+    } finally {
+      setDeletingPlace(false)
+    }
+  }
+
   if (!session || !activeGroup) return null
 
   const displayed = displayedPlaces()
@@ -562,20 +598,47 @@ export default function NearbyHome() {
             onPrimary={() => fetchPlaces(activeGroup.groupId)}
           />
         ) : displayed.length === 0 ? (
-          <div className="rounded-2xl bg-white border border-neutral-200 p-8 text-center shadow-sm mt-4">
-            <p className="text-lg font-semibold text-neutral-900">
-              {selectedCategoryId ? 'No places in this category' : 'No places yet'}
-            </p>
-            <p className="mt-2 text-sm text-neutral-500">
-              {selectedCategoryId ? 'Try a different filter or add a place.' : 'Start saving your favourite food spots'}
-            </p>
-            <button
-              onClick={() => router.push(withBasePath('/add-place'))}
-              className="mt-6 w-full rounded-xl bg-[#1f355d] hover:bg-[#162746] px-4 py-3 text-sm font-semibold text-white transition-colors"
-            >
-              Add first place
-            </button>
-          </div>
+          selectedCategoryId ? (
+            <div className="rounded-2xl bg-white border border-neutral-200 p-8 text-center shadow-sm mt-4">
+              <p className="text-lg font-semibold text-neutral-900">No places in this category</p>
+              <p className="mt-2 text-sm text-neutral-500">Try a different filter or add a place.</p>
+              <button
+                onClick={() => router.push(withBasePath('/add-place'))}
+                className="mt-6 w-full rounded-xl bg-[#1f355d] hover:bg-[#162746] px-4 py-3 text-sm font-semibold text-white transition-colors"
+              >
+                + Add Place
+              </button>
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-white border border-neutral-200 p-8 text-center shadow-sm mt-4">
+              <div className="text-4xl mb-3">🍜</div>
+              <p className="text-xl font-bold text-neutral-900">No places yet</p>
+              <p className="mt-2 text-sm text-neutral-500 leading-relaxed">
+                Looks like your group hasn&apos;t added any spots yet. Why not start the list?
+              </p>
+              <p className="mt-2 text-xs text-neutral-400">
+                Add your favourite food spots, cafes, or hidden gems to get started.
+              </p>
+              <button
+                onClick={() => router.push(withBasePath('/add-place'))}
+                className="mt-6 w-full rounded-xl bg-[#1f355d] hover:bg-[#162746] px-4 py-3 text-sm font-semibold text-white transition-colors"
+              >
+                + Add First Place
+              </button>
+              <div className="mt-4 rounded-xl border border-[#d9e6ff] bg-[#f2f6ff] p-4 text-left">
+                <p className="text-xs font-semibold text-[#1f355d] mb-1.5">💡 Not sure where to start?</p>
+                <p className="text-sm text-[#364158] leading-relaxed">
+                  Why not start by adding your favourite food spot nearby — a hawker stall, a café, or a hidden gem only your group knows about?
+                </p>
+                <button
+                  onClick={() => router.push(withBasePath('/add-place'))}
+                  className="mt-3 w-full rounded-xl border border-[#c3d6f9] bg-white px-4 py-2.5 text-sm font-medium text-[#1f355d] hover:bg-[#eef3fb] transition-colors"
+                >
+                  Add a food spot
+                </button>
+              </div>
+            </div>
+          )
         ) : (
           displayed.map((place) => {
             const notes = place.recommendations.filter((r) => r.note)
@@ -583,9 +646,27 @@ export default function NearbyHome() {
             const expanded = expandedNotes.has(place.place_id)
             const visibleNotes = expanded ? notes : notes.slice(0, 2)
             const extraNotes = notes.length - 2
+            const isOwnPlace = place.recommendations.some((r) => r.member_id === activeGroup.memberId)
 
             return (
-              <div key={place.place_id} className="rounded-2xl bg-white border border-neutral-200 overflow-hidden shadow-sm">
+              <div key={place.place_id} className="relative rounded-2xl bg-white border border-neutral-200 overflow-hidden shadow-sm">
+
+                {/* Subtle trash icon — only for own places */}
+                {isOwnPlace && (
+                  <button
+                    onClick={() => { setDeletePlaceTarget(place); setDeletePlaceError('') }}
+                    className="absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white/80 transition-colors hover:bg-rose-600/80 hover:text-white"
+                    title="Delete place"
+                    aria-label="Delete place"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                      <path d="M10 11v6M14 11v6" />
+                      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                    </svg>
+                  </button>
+                )}
 
                 {/* Photo */}
                 {place.photo_urls.length > 0 && (
@@ -716,6 +797,45 @@ export default function NearbyHome() {
         fallbackMemberName={session.memberName}
         onGroupCreated={handleGroupCreated}
       />
+
+      {/* ── Delete place confirmation modal ──────────────────────────────── */}
+      {deletePlaceTarget && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-4 pb-8 pt-20" onClick={() => { if (!deletingPlace) { setDeletePlaceTarget(null); setDeletePlaceError('') } }}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-rose-100">
+              <svg viewBox="0 0 24 24" className="h-5 w-5 text-rose-600" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                <path d="M10 11v6M14 11v6" />
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+              </svg>
+            </div>
+            <p className="text-base font-semibold text-neutral-900">Delete &ldquo;{deletePlaceTarget.name}&rdquo;?</p>
+            <p className="mt-1.5 text-sm text-neutral-500 leading-relaxed">
+              This will remove all data associated with it, including photos and recommendations from this group.
+            </p>
+            {deletePlaceError && (
+              <p className="mt-3 text-sm text-rose-700 font-medium">{deletePlaceError}</p>
+            )}
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => void confirmDeletePlace()}
+                disabled={deletingPlace}
+                className="flex-1 rounded-xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50 transition-colors"
+              >
+                {deletingPlace ? 'Deleting…' : 'Delete'}
+              </button>
+              <button
+                onClick={() => { setDeletePlaceTarget(null); setDeletePlaceError('') }}
+                disabled={deletingPlace}
+                className="flex-1 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium text-neutral-700 hover:bg-neutral-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
