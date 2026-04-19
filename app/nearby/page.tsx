@@ -604,6 +604,27 @@ export default function NearbyHome() {
         }
       />
 
+      {/* ── Header CTA: Explore Showcase ─────────────────────────────────── */}
+      <div className="nearby-shell pt-3">
+        <button
+          onClick={() => router.push(withBasePath('/showcase'))}
+          className="group w-full rounded-2xl border border-[#d7deec] bg-[linear-gradient(120deg,rgba(255,255,255,0.92),rgba(248,251,255,0.92))] px-4 py-3 text-left shadow-[0_10px_24px_rgba(24,39,75,0.08)] backdrop-blur-sm transition-all hover:border-[#bcc8e3] hover:shadow-[0_14px_28px_rgba(24,39,75,0.12)]"
+          aria-label="Explore Top Dishes Around You"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-[#6b7a99]">Discover</p>
+              <p className="truncate text-sm font-semibold text-[#1f355d]">Explore Top Dishes Around You</p>
+            </div>
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d5dceb] bg-white text-[#1f355d] transition-transform group-hover:translate-x-0.5">
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+            </span>
+          </div>
+        </button>
+      </div>
+
       <div className="nearby-shell pt-5 pb-3">
         <div className="relative">
           <button
