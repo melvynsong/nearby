@@ -93,11 +93,11 @@ export async function POST(request: NextRequest) {
 
     const usersResult = await supabase
       .from('users')
-      .select('id, full_name')
+      .select('id, full_name, phone_number')
       .in('id', ((membersResult.data ?? []) as Array<{ user_id: string }>).map((m) => m.user_id))
 
     const members = (membersResult.data ?? []) as Array<{ id: string; display_name: string; user_id: string }>
-    const users = (usersResult.data ?? []) as Array<{ id: string; full_name: string | null }>
+    const users = (usersResult.data ?? []) as Array<{ id: string; full_name: string | null; phone_number: string | null }>
 
     const pending = pendingRows.map((row: any) => {
       const member = members.find((m) => m.id === row.member_id)
@@ -107,6 +107,7 @@ export async function POST(request: NextRequest) {
         userId: row.user_id,
         requestedAt: row.requested_at,
         name: member?.display_name ?? user?.full_name ?? 'Member',
+        phoneNumber: user?.phone_number ?? '',
       }
     })
 
