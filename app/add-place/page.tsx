@@ -45,6 +45,7 @@ type PlaceDetails = {
   lat: number | null
   lng: number | null
   rating: number | null
+  user_rating_count: number | null
 }
 
 type Category = {
@@ -52,18 +53,35 @@ type Category = {
   name: string
 }
 
+type DishSignals = {
+  image_score: number
+  place_score: number
+  visual_memory_score: number
+}
+
+type DishSuggestion = {
+  name: string
+  confidence: number
+  why: string[]
+  signals: DishSignals
+}
+
 type AiResult = {
   dish: string | null
-  suggestions: string[]   // dish-level names, max 5
+  suggestions: string[]   // dish-level names, max 5 (backward compat)
+  topSuggestions: DishSuggestion[]
   confidence: number | null
   reasoning: string
+  analysisEventId: string | null
 }
 
 const emptyAiResult: AiResult = {
   dish: null,
   suggestions: [],
+  topSuggestions: [],
   confidence: null,
   reasoning: '',
+  analysisEventId: null,
 }
 
 // ─── HEIC helpers ─────────────────────────────────────────────────────────────
@@ -117,19 +135,34 @@ function resolvePlaceMode(
 // ─── AI response normalisation ────────────────────────────────────────────────
 
 function parseAiResponse(data: Record<string, unknown>): AiResult {
-  const confidence = typeof data.confidence === 'number' ? data.confidence : null
+  let confidence = typeof data.confidence === 'number' ? data.confidence : null
+  // Normalise 0-100 scale to 0-1
+  if (confidence !== null && confidence > 1) confidence = confidence / 100
+  if (confidence !== null) confidence = Math.min(1, Math.max(0, confidence))
 
   const rawDish = typeof data.primarySuggestion === 'string' ? data.primarySuggestion.trim() : null
   const dish = rawDish && !isGeneric(rawDish) && (confidence === null || confidence >= 0.5) ? rawDish : null
 
-  const rawAlts = Array.isArray(data.alternativeSuggestions)
+  // Prefer rich top_suggestions array if present
+  const topSuggestions: DishSuggestion[] = Array.isArray(data.topSuggestions)
+    ? (data.topSuggestions as unknown[])
+        .filter((x): x is DishSuggestion => typeof x === 'object' && x !== null && typeof (x as DishSuggestion).name === 'string')
+        .filter((s) => !isGeneric(s.name))
+        .slice(0, 5)
+    : []
+
+  const rawAlts = topSuggestions.length
+    ? topSuggestions.map((s) => s.name)
+    : Array.isArray(data.alternativeSuggestions)
     ? (data.alternativeSuggestions as unknown[])
         .filter((x): x is string => typeof x === 'string' && x.trim().length > 0 && !isGeneric(x))
         .slice(0, 5)
     : []
 
   const reasoning = typeof data.reasoningShort === 'string' ? data.reasoningShort : ''
-  return { dish, suggestions: rawAlts, confidence, reasoning }
+  const analysisEventId = typeof data.analysisEventId === 'string' ? data.analysisEventId : null
+
+  return { dish, suggestions: rawAlts, topSuggestions, confidence, reasoning, analysisEventId }
 }
 
 // ─── Component (inner) ────────────────────────────────────────────────────────
@@ -189,6 +222,7 @@ function AddPlaceInner() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [showSaveErrorCard, setShowSaveErrorCard] = useState(false)
+  const [showDishSavedToast, setShowDishSavedToast] = useState(false)
   // loadingEdit starts true in edit mode to prevent empty-form flash before hydration
   const [loadingEdit, setLoadingEdit] = useState(mode === 'edit')
   const [editDenied, setEditDenied] = useState(false)
@@ -315,11 +349,29 @@ function AddPlaceInner() {
         const noteValue = (result.note as string) ?? ''
         setNote(noteValue)
         const dishName = ((result.dishName as string) ?? '').trim()
+
+        console.log('[EditCategoryLoad]', {
+          place_id: editPlaceId,
+          saved_category_raw: result.dishName ?? null,
+          saved_category_resolved: dishName || null,
+          matched_option_found: dishName.length > 0,
+        })
+
         if (dishName) {
           setSelectedDish(dishName)
           setCustomDish('')
+          // Use confidence=1 so the dish renders in the confirmed "high confidence"
+          // display branch rather than the low-confidence empty input branch.
+          // This is intentional: in edit mode there is no fresh AI analysis —
+          // the loaded category IS the confirmed answer.
+          setAiResult({ ...emptyAiResult, dish: dishName, confidence: 1 })
         }
         setFlowState('analysis_success')
+
+        console.log('[EditCategoryHydrate]', {
+          place_id: editPlaceId,
+          final_selected_category: dishName || '(none)',
+        })
         console.log('[PlaceEditLoad]', { place_id: editPlaceId, data_loaded: true })
       } catch (loadError) {
         console.error('[Nearby][PlaceEdit] Load failed:', loadError)
@@ -332,13 +384,17 @@ function AddPlaceInner() {
     void loadEditData()
   }, [mode, editPlaceId, session?.memberId, session?.groupId])
 
-  // ── Run OpenAI analysis
-  const runAnalysis = useCallback(async (file: File) => {
+  // ── Run OpenAI analysis (optionally with place context)
+  const runAnalysis = useCallback(async (file: File, placeContext?: { placeId: string; placeName: string } | null) => {
     setFlowState('analyzing')
     setAiError('')
     try {
       const formData = new FormData()
       formData.append('image', file)
+      if (placeContext?.placeId) formData.append('placeId', placeContext.placeId)
+      if (placeContext?.placeName) formData.append('placeName', placeContext.placeName)
+      if (session?.memberId) formData.append('userId', session.memberId)
+
       const res = await fetch(apiPath('/api/food/suggest'), { method: 'POST', body: formData })
       const data = await res.json()
 
@@ -363,7 +419,44 @@ function AddPlaceInner() {
       setAiError('We could not analyse this right now. Try again or adjust your input.')
       setFlowState('analysis_error')
     }
-  }, [])
+  }, [session?.memberId])
+
+  // ── Re-rank chips after place selection (lightweight, no image resend) ────
+  const rerankWithPlace = useCallback(async (googlePlaceId: string) => {
+    if (!aiResult.topSuggestions.length) return
+    try {
+      const res = await fetch(apiPath('/api/food/rank'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ googlePlaceId, suggestions: aiResult.topSuggestions }),
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      if (!Array.isArray(data.rankedSuggestions) || !data.rankedSuggestions.length) return
+
+      const ranked: DishSuggestion[] = data.rankedSuggestions
+      const newNames = ranked.map((s: DishSuggestion) => s.name)
+      setAiResult((prev) => ({
+        ...prev,
+        dish: ranked[0]?.name ?? prev.dish,
+        suggestions: newNames,
+        topSuggestions: ranked,
+      }))
+      console.log('[Nearby][Rank] Re-ranked with place context:', newNames)
+    } catch (err) {
+      console.error('[Nearby][Rank] Re-rank failed (non-fatal):', err)
+    }
+  }, [aiResult.topSuggestions])
+
+  // ── Re-rank suggestions when place is selected and dish not yet confirmed ──
+  useEffect(() => {
+    if (!selectedPlace?.google_place_id) return
+    if (selectedDish || customDish.trim()) return  // dish already confirmed, skip
+    if (flowState !== 'analysis_success') return
+    if (!aiResult.topSuggestions.length) return
+    void rerankWithPlace(selectedPlace.google_place_id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPlace?.google_place_id])
 
   // ── Handle file pick — with HEIC conversion
   const handleFilePicked = useCallback(async (file: File | null) => {
@@ -402,7 +495,7 @@ function AddPlaceInner() {
     setSelectedFile(processedFile)
     setPreviewUrl(URL.createObjectURL(processedFile))
     await runAnalysis(processedFile)
-  }, [previewUrl, runAnalysis])
+  }, [previewUrl, runAnalysis, session?.memberId])
 
   const fetchPredictions = useCallback(
     async (q: string) => {
@@ -457,8 +550,17 @@ function AddPlaceInner() {
       if (data.error) {
         console.error('[Nearby][API] Place details failed:', data)
         setError('We could not load place details right now. Please try again.')
+      } else {
+        setSelectedPlace({
+          google_place_id: data.google_place_id,
+          name: data.name,
+          formatted_address: data.formatted_address ?? null,
+          lat: data.lat ?? null,
+          lng: data.lng ?? null,
+          rating: data.rating ?? null,
+          user_rating_count: data.user_rating_count ?? null,
+        })
       }
-      else setSelectedPlace(data)
     } catch (error) {
       console.error('[Nearby][API] Place details request failed:', error)
       setError('Connection issue. Please check your network and try again.')
@@ -500,6 +602,8 @@ function AddPlaceInner() {
       if (selectedPlace.formatted_address) body.append('address', selectedPlace.formatted_address)
       if (selectedPlace.lat != null) body.append('lat', String(selectedPlace.lat))
       if (selectedPlace.lng != null) body.append('lng', String(selectedPlace.lng))
+      if (selectedPlace.rating != null) body.append('googleRating', String(selectedPlace.rating))
+      if (selectedPlace.user_rating_count != null) body.append('googleRatingCount', String(selectedPlace.user_rating_count))
       body.append('dishName',     dishName)
       if (note.trim()) body.append('note', note.trim())
 
@@ -511,6 +615,9 @@ function AddPlaceInner() {
       if (editPlaceId) {
         body.append('editPlaceId', editPlaceId)
       }
+      if (aiResult.analysisEventId) {
+        body.append('analysisEventId', aiResult.analysisEventId)
+      }
 
       const res  = await fetch(apiPath('/api/places/save'), { method: 'POST', body })
       const data = await res.json() as { ok: boolean; message?: string }
@@ -518,6 +625,12 @@ function AddPlaceInner() {
       if (!data.ok) {
         console.error('[Nearby][Save] Server save failed:', data.message)
         throw new Error(data.message ?? 'Save failed')
+      }
+
+      // Brief toast before navigating away
+      if (aiResult.analysisEventId) {
+        setShowDishSavedToast(true)
+        await new Promise((r) => setTimeout(r, 900))
       }
 
       router.push(withBasePath('/nearby'))
@@ -730,7 +843,7 @@ function AddPlaceInner() {
                     </>
                   )}
 
-                  {/* Medium confidence — show chips for quick confirmation */}
+                  {/* Medium confidence — ranked chips for quick confirmation */}
                   {!isHighConf && isMediumConf && !editingDish && (
                     <>
                       <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-3">What is this dish?</p>
@@ -739,7 +852,7 @@ function AddPlaceInner() {
                           <button
                             key={`chip-med-${idx}`}
                             onClick={() => { setSelectedDish(name); setCustomDish('') }}
-                            className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all min-w-0 ${
+                            className={`relative rounded-full px-3 py-1.5 text-sm font-medium transition-all min-w-0 ${
                               selectedDish === name
                                 ? 'bg-[#1f355d] text-white'
                                 : idx === 0
@@ -747,10 +860,14 @@ function AddPlaceInner() {
                                 : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
                             }`}
                           >
+                            {idx === 0 && selectedDish !== name && (
+                              <span className="mr-1 text-[10px] font-semibold text-emerald-600">Most likely</span>
+                            )}
                             {name}
                           </button>
                         ))}
                       </div>
+                      <p className="mt-2 text-[11px] text-neutral-400">Suggested from photo, similar dishes, and place history.</p>
                       {!selectedDish && (
                         <input
                           type="text"
@@ -763,12 +880,12 @@ function AddPlaceInner() {
                     </>
                   )}
 
-                  {/* Low confidence — manual entry with optional chips */}
+                  {/* Low confidence — ranked chips + manual entry */}
                   {!isHighConf && !isMediumConf && !editingDish && (
                     <>
                       <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-3">Help us choose the closest dish</p>
                       {chips.length > 0 && (
-                        <div className="mb-3 flex flex-wrap gap-2">
+                        <div className="mb-2 flex flex-wrap gap-2">
                           {chips.map((name, idx) => (
                             <button
                               key={`chip-low-${idx}`}
@@ -776,13 +893,21 @@ function AddPlaceInner() {
                               className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all min-w-0 ${
                                 selectedDish === name
                                   ? 'bg-[#1f355d] text-white'
+                                  : idx === 0
+                                  ? 'border border-neutral-300 bg-neutral-50 text-neutral-700 hover:bg-neutral-100'
                                   : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
                               }`}
                             >
+                              {idx === 0 && selectedDish !== name && chips.length > 1 && (
+                                <span className="mr-1 text-[10px] font-semibold text-neutral-500">Most likely</span>
+                              )}
                               {name}
                             </button>
                           ))}
                         </div>
+                      )}
+                      {chips.length > 0 && (
+                        <p className="mb-3 text-[11px] text-neutral-400">Suggested from photo, similar dishes, and place history.</p>
                       )}
                       <input
                         type="text"
@@ -950,6 +1075,13 @@ function AddPlaceInner() {
         </div>
         )} {/* end loadingEdit conditional */}
       </div>
+
+      {/* ── Dish saved toast ─────────────────────────────────────────── */}
+      {showDishSavedToast && (
+        <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white shadow-lg">
+          Dish saved. Future suggestions will improve.
+        </div>
+      )}
 
       {/* ── Blocking analysis overlay ────────────────────────────────── */}
       {isBlocking && (

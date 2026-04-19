@@ -22,6 +22,48 @@ async function resolveIndividualId(memberId: string): Promise<string> {
   return result.data?.user_id ?? memberId
 }
 
+// Fetch the saved category name for a place using an explicit 2-step lookup.
+// Avoids relying on Supabase FK schema cache which can silently return null
+// when the foreign key relationship is not registered in the API schema.
+async function resolveCategoryName(placeId: string): Promise<string> {
+  const db = getDb()
+
+  // Step 1: get the category_id linked to this place
+  const pcResult = await db
+    .from('place_categories')
+    .select('category_id')
+    .eq('place_id', placeId)
+    .limit(1)
+    .maybeSingle()
+
+  const categoryId = pcResult.data?.category_id ?? null
+
+  console.log('[EditCategoryLoad]', {
+    place_id: placeId,
+    category_id_found: categoryId ?? null,
+  })
+
+  if (!categoryId) return ''
+
+  // Step 2: look up the name in food_categories directly
+  const catResult = await db
+    .from('food_categories')
+    .select('name')
+    .eq('id', categoryId)
+    .maybeSingle()
+
+  const name = catResult.data?.name ?? ''
+
+  console.log('[EditCategoryLoad]', {
+    place_id: placeId,
+    saved_category_raw: name,
+    saved_category_resolved: name.trim(),
+    matched_option_found: name.length > 0,
+  })
+
+  return name.trim()
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -67,19 +109,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, message: 'Place not found.' }, { status: 404 })
     }
 
-    const categoryResult = await db
-      .from('place_categories')
-      .select('food_categories ( name )')
-      .eq('place_id', placeId)
-      .limit(1)
-
-    const categoryName = ((categoryResult.data ?? [])[0] as { food_categories?: { name?: string } | null } | undefined)?.food_categories?.name ?? ''
+    // Use explicit 2-step lookup instead of FK join (more reliable across schema versions)
+    const categoryName = await resolveCategoryName(placeId)
 
     console.log('[PlaceEdit]', {
       place_id: placeId,
       individual_id: individualId,
       is_owner: true,
       action: 'open_edit',
+      dish_name_resolved: categoryName || '(empty)',
     })
 
     return NextResponse.json({

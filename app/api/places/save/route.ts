@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabaseClient } from '@/lib/server-supabase'
+import { incrementPlaceDishAddCount, confirmDishSelection } from '@/lib/dish-memory'
 
 // Service-role fallback so we can run locally without the env var
 function getDb() {
@@ -38,6 +39,11 @@ export async function POST(request: NextRequest) {
     const imageTransformRaw = (formData.get('imageTransform') as string | null) ?? ''
     const editPlaceId = ((formData.get('editPlaceId') as string | null) ?? '').trim()
     const file       = formData.get('file') as File | null
+    const analysisEventId = ((formData.get('analysisEventId') as string | null) ?? '').trim()
+    const googleRatingRaw = formData.get('googleRating') as string | null
+    const googleRatingCountRaw = formData.get('googleRatingCount') as string | null
+    const googleRating = googleRatingRaw ? parseFloat(googleRatingRaw) : null
+    const googleRatingCount = googleRatingCountRaw ? parseInt(googleRatingCountRaw, 10) : null
 
     if (!memberId || !groupId || !googlePlaceId || !name) {
       return NextResponse.json({ ok: false, message: 'Missing required fields.' }, { status: 400 })
@@ -167,13 +173,21 @@ export async function POST(request: NextRequest) {
         existingPhotoUrls = existingPlace.photo_urls ?? []
         existingImageTransforms = ((existingPlace as { image_transforms?: Record<string, unknown> }).image_transforms) ?? {}
 
+        const coordUpdate: Record<string, unknown> = {}
         if ((existingPlace.lat == null || existingPlace.lng == null) && lat != null && lng != null) {
-          await db.from('places').update({ lat, lng }).eq('id', placeId)
+          coordUpdate.lat = lat
+          coordUpdate.lng = lng
+        }
+        // Always refresh rating data when the user re-saves a known place
+        if (googleRating != null) coordUpdate.google_rating = googleRating
+        if (googleRatingCount != null) coordUpdate.google_rating_count = googleRatingCount
+        if (Object.keys(coordUpdate).length > 0) {
+          await db.from('places').update(coordUpdate).eq('id', placeId)
         }
       } else {
         const { data: inserted, error: insertErr } = await db
           .from('places')
-          .insert({ google_place_id: googlePlaceId, name, formatted_address: address, lat, lng, photo_urls: [] })
+          .insert({ google_place_id: googlePlaceId, name, formatted_address: address, lat, lng, photo_urls: [], google_rating: googleRating, google_rating_count: googleRatingCount })
           .select('id')
           .single()
 
@@ -277,6 +291,25 @@ export async function POST(request: NextRequest) {
       if (catLinkErr) {
         console.error('[Nearby][API][Save] Category link error:', catLinkErr)
         // non-fatal
+      }
+    }
+
+    // ── 6. Update dish intelligence (non-blocking, non-fatal) ─────────────
+    if (dishName && placeId) {
+      void incrementPlaceDishAddCount(placeId, dishName)
+
+      // If we have an analysis event ID, mark it as confirmed with full context
+      if (analysisEventId) {
+        const savedPhotoUrl = (() => {
+          // Retrieve the latest photo URL we just uploaded (last in the array)
+          return null // photo URL retrieved async below — handled in confirm call
+        })()
+        void confirmDishSelection({
+          analysisEventId,
+          selectedDishName: dishName,
+          placeId,
+          photoUrl: savedPhotoUrl,
+        })
       }
     }
 
