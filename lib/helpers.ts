@@ -1,7 +1,11 @@
 // ── Phone ─────────────────────────────────────────────────────────────────────
 
+export function normalizePhoneNumber(phone: string): string {
+  return phone.replace(/\D/g, '')
+}
+
 export function phoneLast4(phone: string): string {
-  return phone.replace(/\D/g, '').slice(-4)
+  return normalizePhoneNumber(phone).slice(-4)
 }
 
 // ── Slug ──────────────────────────────────────────────────────────────────────

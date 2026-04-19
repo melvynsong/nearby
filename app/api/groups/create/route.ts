@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { slugify } from '@/lib/helpers'
+import { normalizePhoneNumber, phoneLast4, slugify } from '@/lib/helpers'
 import { getServerSupabaseClient, getServiceRoleSupabaseClient, getUserSupabaseClient } from '@/lib/server-supabase'
 
 type FriendInput = { name: string; phone: string }
-
-function phoneLast4(phone: string): string {
-  return phone.replace(/\D/g, '').slice(-4)
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -97,12 +93,13 @@ export async function POST(request: NextRequest) {
 
     let creatorUserId = ''
     let creatorName = fallbackMemberName
+    let creatorPhoneNumber = ''
     let creatorPhone4 = ''
 
     if (sessionMemberId) {
       const { data: creatorMember, error: creatorError } = await serverSupabase
         .from('members')
-        .select('id, user_id, display_name, phone_last4, users ( phone_number )')
+        .select('id, user_id, display_name, phone_number, phone_last4, users ( phone_number )')
         .eq('id', sessionMemberId)
         .maybeSingle()
 
@@ -123,7 +120,8 @@ export async function POST(request: NextRequest) {
 
       creatorUserId = creatorMember.user_id as string
       creatorName = (creatorMember.display_name as string | null) ?? fallbackMemberName
-      const creatorPhone = (creatorMember.users as { phone_number?: string } | null)?.phone_number ?? ''
+      const creatorPhone = (creatorMember.phone_number as string | null) ?? (creatorMember.users as { phone_number?: string } | null)?.phone_number ?? ''
+      creatorPhoneNumber = normalizePhoneNumber(creatorPhone)
       creatorPhone4 = (creatorMember.phone_last4 as string | null) ?? phoneLast4(creatorPhone)
     } else {
       const requestedUserId = requesterUserId || effectiveAuthUserId
@@ -150,10 +148,11 @@ export async function POST(request: NextRequest) {
       if (creatorUser?.id) {
         creatorUserId = creatorUser.id
         creatorName = creatorUser.full_name ?? fallbackMemberName
+        creatorPhoneNumber = normalizePhoneNumber(creatorUser.phone_number ?? '')
         creatorPhone4 = creatorUser.phone_last4 ?? phoneLast4(creatorUser.phone_number ?? '')
       } else if (effectiveAuthUserId) {
         const profileName = requesterProfileName || fallbackMemberName || 'Member'
-        const profilePhone = requesterProfilePhone.trim()
+        const profilePhone = normalizePhoneNumber(requesterProfilePhone)
 
         if (!profilePhone) {
           console.warn('[Nearby][API][GroupCreate] blocked: auth user has no profile row and no phone hint', {
@@ -192,6 +191,7 @@ export async function POST(request: NextRequest) {
 
         creatorUserId = insertedProfile.id
         creatorName = insertedProfile.full_name ?? profileName
+        creatorPhoneNumber = normalizePhoneNumber(insertedProfile.phone_number ?? profilePhone)
         creatorPhone4 = insertedProfile.phone_last4 ?? phoneLast4(profilePhone)
       } else {
         console.warn('[Nearby][API][GroupCreate] blocked: no authenticated user for profile branch')
@@ -245,7 +245,7 @@ export async function POST(request: NextRequest) {
       groupId = createWithOwner.data.id
     }
 
-    async function upsertMember(userId: string, displayName: string, last4: string, targetGroupId: string): Promise<string> {
+    async function upsertMember(userId: string, displayName: string, phoneNumber: string, last4: string, targetGroupId: string): Promise<string> {
       const existing = await serverSupabase
         .from('members')
         .select('id')
@@ -257,9 +257,23 @@ export async function POST(request: NextRequest) {
 
       const inserted = await serverSupabase
         .from('members')
-        .insert({ display_name: displayName, group_id: targetGroupId, phone_last4: last4, user_id: userId })
+        .insert({ display_name: displayName, group_id: targetGroupId, phone_number: phoneNumber, phone_last4: last4, user_id: userId })
         .select('id')
         .single()
+
+      if (inserted.error?.code === '42703') {
+        const fallbackInserted = await serverSupabase
+          .from('members')
+          .insert({ display_name: displayName, group_id: targetGroupId, phone_last4: last4, user_id: userId })
+          .select('id')
+          .single()
+
+        if (fallbackInserted.error || !fallbackInserted.data?.id) {
+          throw fallbackInserted.error ?? new Error('Failed to create member')
+        }
+
+        return fallbackInserted.data.id
+      }
 
       if (inserted.error || !inserted.data?.id) {
         throw inserted.error ?? new Error('Failed to create member')
@@ -269,7 +283,7 @@ export async function POST(request: NextRequest) {
     }
 
     async function upsertUser(fullName: string, phone: string): Promise<string> {
-      const cleanedPhone = phone.trim()
+      const cleanedPhone = normalizePhoneNumber(phone)
       const usersClient = serviceSupabase ?? profileSupabase
 
       const existing = await usersClient
@@ -306,15 +320,15 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const creatorMemberId = await upsertMember(creatorUserId, creatorName, creatorPhone4, groupId)
+      const creatorMemberId = await upsertMember(creatorUserId, creatorName, creatorPhoneNumber, creatorPhone4, groupId)
       await upsertMembership(creatorUserId, groupId, creatorMemberId)
 
       const validFriends = friends.filter((f) => f?.name?.trim() && f?.phone?.trim())
       for (const friend of validFriends) {
         const friendName = friend.name.trim()
-        const friendPhone = friend.phone.trim()
+        const friendPhone = normalizePhoneNumber(friend.phone)
         const friendUserId = await upsertUser(friendName, friendPhone)
-        const friendMemberId = await upsertMember(friendUserId, friendName, phoneLast4(friendPhone), groupId)
+        const friendMemberId = await upsertMember(friendUserId, friendName, friendPhone, phoneLast4(friendPhone), groupId)
         await upsertMembership(friendUserId, groupId, friendMemberId)
       }
 

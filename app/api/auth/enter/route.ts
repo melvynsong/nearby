@@ -1,6 +1,7 @@
 import { pbkdf2Sync, timingSafeEqual } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabaseClient, getServiceRoleSupabaseClient } from '@/lib/server-supabase'
+import { normalizePhoneNumber, phoneLast4 } from '@/lib/helpers'
 
 type GroupEntry = {
   memberId: string
@@ -21,7 +22,22 @@ type UserLoginRow = {
   personal_passcode?: string | null
 }
 
+type GroupMemberLoginRow = {
+  id: string
+  display_name: string
+  group_id: string
+  user_id: string
+  phone_number?: string | null
+  users?: {
+    phone_number?: string | null
+  } | null
+}
+
 function verifyPasscode(passcode: string, stored: string): boolean {
+  if (!stored.includes(':')) {
+    return stored.trim() === passcode.trim()
+  }
+
   const [salt, hashHex] = stored.split(':')
   if (!salt || !hashHex) return false
 
@@ -94,20 +110,22 @@ async function buildGroupEntriesForUser(userId: string): Promise<GroupEntry[]> {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const last4Input = typeof body?.last4 === 'string' ? body.last4.trim() : ''
-    const last4 = last4Input.replace(/\D/g, '').slice(-4)
+    const phoneNumberInput = typeof body?.phoneNumber === 'string' ? body.phoneNumber.trim() : ''
+    const phoneNumber = normalizePhoneNumber(phoneNumberInput)
     const method = (body?.method === 'personal' ? 'personal' : 'group') as LoginMethod
     const personalPasscode = typeof body?.personalPasscode === 'string' ? body.personalPasscode.trim() : ''
     const groupPasscode = typeof body?.groupPasscode === 'string' ? body.groupPasscode.trim() : ''
+    const lookupLast4 = phoneLast4(phoneNumber)
 
     console.log('[Login Attempt]', {
       method,
-      last4,
+      phoneNumber,
+      last4: lookupLast4,
       passcode: method === 'personal' ? personalPasscode : groupPasscode,
     })
 
-    if (!/^\d{4}$/.test(last4)) {
-      return NextResponse.json({ ok: false, message: 'Enter the last 4 digits of your mobile.' }, { status: 400 })
+    if (phoneNumber.length < 8) {
+      return NextResponse.json({ ok: false, message: 'Enter your telephone number.' }, { status: 400 })
     }
 
     let supabase = getServerSupabaseClient()
@@ -129,7 +147,7 @@ export async function POST(request: NextRequest) {
       const preferredUsersResult = await supabase
         .from('users')
         .select('id, full_name, phone_number, phone_last4, has_personal_passcode, personal_passcode_hash, personal_passcode, created_at')
-        .eq('phone_last4', last4)
+        .eq('phone_last4', lookupLast4)
         .order('created_at', { ascending: false })
         .limit(10)
 
@@ -140,7 +158,7 @@ export async function POST(request: NextRequest) {
         const fallbackUsersResult = await supabase
           .from('users')
           .select('id, full_name, phone_number, phone_last4, has_personal_passcode, personal_passcode_hash, created_at')
-          .eq('phone_last4', last4)
+          .eq('phone_last4', lookupLast4)
           .order('created_at', { ascending: false })
           .limit(10)
 
@@ -159,16 +177,27 @@ export async function POST(request: NextRequest) {
         count: users.length,
         users: users.map((user) => ({
           id: user.id,
+          phone_matches: normalizePhoneNumber(user.phone_number ?? '') === phoneNumber,
           phone_last4: user.phone_last4,
           has_personal_passcode: user.has_personal_passcode,
           has_hash: Boolean(user.personal_passcode_hash),
+          hash_format: user.personal_passcode_hash?.includes(':') ? 'pbkdf2' : user.personal_passcode_hash ? 'legacy-plain-or-unknown' : 'missing',
           has_raw: Boolean(user.personal_passcode),
         })),
       })
 
-      const matchedUser = users.find((user) => matchesPersonalPasscode(user, personalPasscode))
+      const matchedUser = users.find((user) => {
+        if (normalizePhoneNumber(user.phone_number ?? '') !== phoneNumber) return false
+        return matchesPersonalPasscode(user, personalPasscode)
+      })
 
       if (!matchedUser) {
+        console.error('[Login Error]', {
+          message: 'Personal passcode mismatch',
+          phoneNumber,
+          last4: lookupLast4,
+          candidateUserIds: users.map((user) => user.id),
+        })
         return NextResponse.json({ ok: false, message: 'Incorrect details.' }, { status: 401 })
       }
 
@@ -181,8 +210,8 @@ export async function POST(request: NextRequest) {
           register: {
             userId: matchedUser.id,
             userName: matchedUser.full_name ?? 'Member',
-            phone4: matchedUser.phone_last4 ?? last4,
-            phone: matchedUser.phone_number ?? '',
+            phone4: matchedUser.phone_last4 ?? lookupLast4,
+            phone: matchedUser.phone_number ?? phoneNumber,
           },
         })
       }
@@ -194,8 +223,8 @@ export async function POST(request: NextRequest) {
         register: {
           userId: matchedUser.id,
           userName: matchedUser.full_name ?? primary.memberName,
-          phone4: matchedUser.phone_last4 ?? last4,
-          phone: matchedUser.phone_number ?? '',
+          phone4: matchedUser.phone_last4 ?? lookupLast4,
+          phone: matchedUser.phone_number ?? phoneNumber,
         },
         session: {
           memberId: primary.memberId,
@@ -213,20 +242,40 @@ export async function POST(request: NextRequest) {
 
     const membersResult = await supabase
       .from('members')
-      .select('id, display_name, group_id, user_id')
-      .eq('phone_last4', last4)
+      .select('id, display_name, group_id, user_id, phone_number, users ( phone_number )')
+      .eq('phone_last4', lookupLast4)
+
+    let membersData = membersResult.data as GroupMemberLoginRow[] | null
+    let membersError = membersResult.error as { code?: string; message?: string } | null
+
+    if (membersError?.code === '42703') {
+      const fallbackMembersResult = await supabase
+        .from('members')
+        .select('id, display_name, group_id, user_id, users ( phone_number )')
+        .eq('phone_last4', lookupLast4)
+
+      membersData = fallbackMembersResult.data as GroupMemberLoginRow[] | null
+      membersError = fallbackMembersResult.error as { code?: string; message?: string } | null
+    }
 
     console.log('[DB Result]', {
       method,
-      count: (membersResult.data ?? []).length,
+      count: (membersData ?? []).length,
+      members: (membersData ?? []).map((member) => ({
+        id: member.id,
+        user_id: member.user_id,
+        phone_matches: normalizePhoneNumber(member.phone_number ?? member.users?.phone_number ?? '') === phoneNumber,
+      })),
     })
 
-    if (membersResult.error) {
-      console.error('[Nearby][API][Enter] members lookup failed:', membersResult.error)
+    if (membersError) {
+      console.error('[Nearby][API][Enter] members lookup failed:', membersError)
       return NextResponse.json({ ok: false, message: 'We could not complete this just now. Please try again.' }, { status: 500 })
     }
 
-    const members = (membersResult.data ?? []) as Array<{ id: string; display_name: string; group_id: string; user_id: string }>
+    const members = (membersData ?? [])
+      .filter((member) => normalizePhoneNumber(member.phone_number ?? member.users?.phone_number ?? '') === phoneNumber)
+
     if (members.length === 0) {
       return NextResponse.json({ ok: false, message: 'Incorrect details.' }, { status: 401 })
     }
@@ -276,8 +325,8 @@ export async function POST(request: NextRequest) {
       register: {
         userId: matched.userId,
         userName: userResult.data?.full_name ?? matched.memberName,
-        phone4: userResult.data?.phone_last4 ?? last4,
-        phone: userResult.data?.phone_number ?? '',
+        phone4: userResult.data?.phone_last4 ?? lookupLast4,
+        phone: userResult.data?.phone_number ?? phoneNumber,
       },
       session: {
         memberId: matched.memberId,

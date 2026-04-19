@@ -26,7 +26,7 @@ type LoginMethod = 'personal' | 'group'
 
 export default function Home() {
   const router = useRouter()
-  const [last4, setLast4] = useState('')
+  const [phoneNumber, setPhoneNumber] = useState('')
   const [passcode, setPasscode] = useState('')
   const [loginMethod, setLoginMethod] = useState<LoginMethod>('personal')
   const [error, setError] = useState('')
@@ -188,17 +188,17 @@ export default function Home() {
     setError('')
     setShowLoginErrorCard(false)
 
-    const normalizedLast4 = last4.replace(/\D/g, '').slice(-4)
+    const normalizedPhoneNumber = phoneNumber.replace(/\D/g, '')
     const normalizedPasscode = passcode.trim()
 
     console.log('[Login Attempt]', {
-      last4: normalizedLast4,
+      phoneNumber: normalizedPhoneNumber,
       passcode: normalizedPasscode,
       method: loginMethod,
     })
 
-    if (normalizedLast4.length !== 4 || !/^\d{4}$/.test(normalizedLast4)) {
-      setError('Enter the last 4 digits of your mobile.')
+    if (normalizedPhoneNumber.length < 8) {
+      setError('Enter your telephone number.')
       return
     }
 
@@ -214,7 +214,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          last4: normalizedLast4,
+          phoneNumber: normalizedPhoneNumber,
           method: loginMethod,
           personalPasscode: loginMethod === 'personal' ? normalizedPasscode : '',
           groupPasscode: loginMethod === 'group' ? normalizedPasscode : '',
@@ -336,14 +336,13 @@ export default function Home() {
               </div>
 
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-[#364158]">2. Last 4 digits</label>
+                <label className="mb-1.5 block text-sm font-medium text-[#364158]">2. Telephone number</label>
                 <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={4}
-                  value={last4}
-                  onChange={(e) => setLast4(e.target.value.replace(/\D/g, ''))}
-                  placeholder="5432"
+                  type="tel"
+                  inputMode="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="91234567"
                   className="w-full rounded-xl border border-[#d8deea] px-4 py-2.5 text-sm outline-none transition focus:border-[#1f355d] focus:ring-2 focus:ring-[#e6edf9]"
                 />
               </div>

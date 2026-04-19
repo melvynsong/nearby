@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { phoneLast4 } from '@/lib/helpers'
+import { normalizePhoneNumber, phoneLast4 } from '@/lib/helpers'
 import { getServerSupabaseClient } from '@/lib/server-supabase'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const fullName = typeof body?.fullName === 'string' ? body.fullName.trim() : ''
-    const phoneNumber = typeof body?.phoneNumber === 'string' ? body.phoneNumber.trim() : ''
+    const phoneNumberInput = typeof body?.phoneNumber === 'string' ? body.phoneNumber.trim() : ''
+    const phoneNumber = normalizePhoneNumber(phoneNumberInput)
 
     if (!fullName || !phoneNumber) {
       return NextResponse.json(
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (phoneNumber.replace(/\D/g, '').length < 8) {
+    if (phoneNumber.length < 8) {
       return NextResponse.json(
         { ok: false, message: 'Please enter a valid telephone number.' },
         { status: 400 },

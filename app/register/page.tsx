@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { phoneLast4 } from '@/lib/helpers'
+import { normalizePhoneNumber, phoneLast4 } from '@/lib/helpers'
 import AppHeader from '@/components/AppHeader'
 import { supabase } from '@/lib/supabase'
 import { withBasePath } from '@/lib/base-path'
@@ -47,10 +47,10 @@ export default function Register() {
   const handleRegister = async () => {
     setError('')
     const name = fullName.trim()
-    const ph = phone.trim()
+    const ph = normalizePhoneNumber(phone)
 
     if (!name) { setError('Please enter your name.'); return }
-    if (ph.replace(/\D/g, '').length < 8) { setError('Please enter a valid telephone number.'); return }
+    if (ph.length < 8) { setError('Please enter a valid telephone number.'); return }
 
     const last4 = phoneLast4(ph)
     setSaving(true)

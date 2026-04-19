@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabaseClient } from '@/lib/server-supabase'
-
-function phoneLast4(phone: string): string {
-  return phone.replace(/\D/g, '').slice(-4)
-}
+import { normalizePhoneNumber, phoneLast4 } from '@/lib/helpers'
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,12 +27,13 @@ export async function POST(request: NextRequest) {
 
     let userId = ''
     let displayName = 'Member'
+    let phoneNumber = ''
     let phone4 = ''
 
     if (sessionMemberId) {
       const creator = await supabase
         .from('members')
-        .select('id, user_id, display_name, phone_last4, users ( phone_number )')
+        .select('id, user_id, display_name, phone_number, phone_last4, users ( phone_number )')
         .eq('id', sessionMemberId)
         .maybeSingle()
 
@@ -49,7 +47,8 @@ export async function POST(request: NextRequest) {
 
       userId = creator.data.user_id as string
       displayName = (creator.data.display_name as string | null) ?? 'Member'
-      const phone = (creator.data.users as { phone_number?: string } | null)?.phone_number ?? ''
+      const phone = (creator.data.phone_number as string | null) ?? (creator.data.users as { phone_number?: string } | null)?.phone_number ?? ''
+      phoneNumber = normalizePhoneNumber(phone)
       phone4 = (creator.data.phone_last4 as string | null) ?? phoneLast4(phone)
     } else {
       const user = await supabase
@@ -68,6 +67,7 @@ export async function POST(request: NextRequest) {
 
       userId = user.data.id
       displayName = user.data.full_name ?? 'Member'
+      phoneNumber = normalizePhoneNumber(user.data.phone_number ?? '')
       phone4 = user.data.phone_last4 ?? phoneLast4(user.data.phone_number ?? '')
     }
 
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!phone4) {
+    if (!phoneNumber || !phone4) {
       return NextResponse.json(
         { ok: false, message: 'Please update your account before joining this group.' },
         { status: 400 },
@@ -112,19 +112,35 @@ export async function POST(request: NextRequest) {
     if (!memberId) {
       const inserted = await supabase
         .from('members')
-        .insert({ user_id: userId, group_id: targetGroup.id, display_name: displayName, phone_last4: phone4 })
+        .insert({ user_id: userId, group_id: targetGroup.id, display_name: displayName, phone_number: phoneNumber, phone_last4: phone4 })
         .select('id')
         .single()
 
-      if (inserted.error || !inserted.data?.id) {
+      if (inserted.error?.code === '42703') {
+        const fallbackInserted = await supabase
+          .from('members')
+          .insert({ user_id: userId, group_id: targetGroup.id, display_name: displayName, phone_last4: phone4 })
+          .select('id')
+          .single()
+
+        if (fallbackInserted.error || !fallbackInserted.data?.id) {
+          console.error('[Nearby][API][GroupJoin] Member insert fallback failed:', fallbackInserted.error)
+          return NextResponse.json(
+            { ok: false, message: 'We could not complete this just now. Please try again.' },
+            { status: 500 },
+          )
+        }
+
+        memberId = fallbackInserted.data.id
+      } else if (inserted.error || !inserted.data?.id) {
         console.error('[Nearby][API][GroupJoin] Member insert failed:', inserted.error)
         return NextResponse.json(
           { ok: false, message: 'We could not complete this just now. Please try again.' },
           { status: 500 },
         )
+      } else {
+        memberId = inserted.data.id
       }
-
-      memberId = inserted.data.id
     }
 
     const membership = await supabase

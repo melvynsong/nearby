@@ -58,7 +58,11 @@ export async function POST(request: NextRequest) {
     const userClient = getUserSupabaseClient(bearerToken)
     const { error: updateError } = await userClient
       .from('users')
-      .update({ personal_passcode_hash, has_personal_passcode: true })
+      .update({
+        personal_passcode_hash,
+        personal_passcode: passcode,
+        has_personal_passcode: true,
+      })
       .eq('id', verifiedUserId)
 
     if (updateError) {
