@@ -8,13 +8,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Minimal session cookie check (adjust cookie name if needed)
-  const hasSession = request.cookies.has('sb-access-token')
+  // Check for custom session cookie set by your login API
+  const hasSession = request.cookies.has('custom_session')
   if (!hasSession) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // For full admin check, do it in your page or API route
   return NextResponse.next()
 }
 

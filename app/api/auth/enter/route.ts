@@ -270,7 +270,8 @@ export async function POST(request: NextRequest) {
     const primary = allGroups[0]
     console.log('[Auth]', { event: 'login_success', userId: matchedUser.id })
 
-    return NextResponse.json({
+    // Set a custom session cookie for your login system
+    const response = NextResponse.json({
       ok: true,
       hasGroup: true,
       register: {
@@ -287,6 +288,14 @@ export async function POST(request: NextRequest) {
         allGroups,
       },
     })
+    // Set a cookie named custom_session with the user id (for demo; use JWT for production)
+    response.cookies.set('custom_session', matchedUser.id, {
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+    })
+    return response
   } catch (error) {
     console.error('[Login Error]', error)
     return NextResponse.json(
