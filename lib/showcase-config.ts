@@ -195,11 +195,7 @@ export async function getAggregatedShowcases(db: any, mode: string) {
         score,
       };
     })
-    .filter((entry) => {
-      if (mode === 'recommendations') return entry.recommendationCount > 0;
-      if (mode === 'blended') return entry.usageCount > 0 || entry.recommendationCount > 0;
-      return entry.usageCount > 0;
-    })
+    // No minimum threshold: show all categories
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       if (b.recommendationCount !== a.recommendationCount) return b.recommendationCount - a.recommendationCount;

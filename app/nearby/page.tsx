@@ -8,6 +8,8 @@ import { apiPath } from '@/lib/base-path'
 import { haversineDistanceKm, formatDistance, getInitials } from '@/lib/nearby-helpers'
 import CreateGroupModal, { type GroupEntry as ModalGroupEntry } from '@/components/CreateGroupModal'
 import AppHeader from '@/components/AppHeader'
+// ...existing code...
+// import { isNearbyAdmin } from '@/lib/admin'
 import ErrorState from '@/components/ErrorState'
 import { readTransformFromMap, type TransformMap } from '@/lib/image-transform'
 import { withBasePath } from '@/lib/base-path'
@@ -94,6 +96,14 @@ export default function NearbyHome() {
   const [deletePlaceTarget, setDeletePlaceTarget] = useState<PlaceCard | null>(null)
   const [deletingPlace, setDeletingPlace] = useState(false)
   const [deletePlaceError, setDeletePlaceError] = useState('')
+
+  // Admin pill state
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  useEffect(() => {
+    if (!currentUserId) return
+    // isNearbyAdmin(currentUserId).then(setIsAdmin)
+  }, [currentUserId])
 
   // ── Data fetching ─────────────────────────────────────────────────────────────
 
@@ -573,11 +583,20 @@ export default function NearbyHome() {
       <AppHeader
         right={
           <div className="flex items-center gap-2">
+            {isAdmin && (
+              <button
+                onClick={() => router.push(withBasePath('/nearby/chef'))}
+                className="inline-flex h-8 items-center gap-1.5 rounded-full border border-yellow-300 bg-yellow-50 px-3 text-xs font-semibold text-yellow-900 shadow-sm transition-all hover:bg-yellow-100 active:scale-[0.98]"
+                style={{ fontFamily: 'var(--font-sf, inherit)' }}
+                title="Nearby Chef Console"
+              >
+                <span role="img" aria-label="Chef" className="mr-1">⭐</span> Chef
+              </button>
+            )}
             <div className="hidden min-[390px]:block text-right">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Signed in</p>
               <p className="text-xs font-medium text-neutral-700 leading-none">{session.memberName}</p>
             </div>
-
             <button
               onClick={() => router.push(withBasePath('/settings'))}
               className="inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 text-xs font-medium text-neutral-700 shadow-sm transition-all hover:bg-neutral-100 active:scale-[0.98]"
@@ -588,7 +607,6 @@ export default function NearbyHome() {
               </svg>
               <span>Settings</span>
             </button>
-
             <button
               onClick={() => void handleLogout()}
               className="inline-flex h-8 items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50/70 px-3 text-xs font-medium text-rose-700 transition-all hover:bg-rose-100 active:scale-[0.98]"
