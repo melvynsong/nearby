@@ -29,35 +29,44 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
   }, [showcases, activePill, search]);
 
   return (
-    <main>
-      {/* Search input (optional) */}
-      <section className="px-5 pt-4">
-        <input
-          type="text"
-          placeholder="Search showcases..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="mb-4 w-full rounded border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-white/40 focus:outline-none"
-        />
-      </section>
-
-      {/* Pills */}
-      <section className="px-5 pb-4">
-        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-          {pills.map((pill) => (
-            <button
-              key={pill.key}
-              className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-all ${activePill === pill.key ? "bg-yellow-400 text-white shadow" : "bg-white/10 text-white/80 hover:bg-yellow-100 hover:text-yellow-700"}`}
-              onClick={() => setActivePill(pill.key)}
-            >
-              {pill.label}
-            </button>
-          ))}
+    <main className="bg-neutral-950 min-h-screen">
+      {/* Top Section: solid, sticky, safe-area, shadow */}
+      <div
+        className="sticky top-0 z-50 w-full border-b border-neutral-200 shadow-sm bg-white"
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
+        <div className="px-4 pt-3 pb-2 flex flex-col gap-2">
+          {/* Search input */}
+          <input
+            type="text"
+            placeholder="Search showcases..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-xl bg-gray-100 text-gray-900 placeholder-gray-400 border border-gray-200 focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100 px-4 py-3 text-base font-medium transition-all duration-150 shadow-sm outline-none"
+            style={{ minHeight: 48 }}
+          />
+          {/* Pills */}
+          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar mt-1">
+            {pills.map((pill) => (
+              <button
+                key={pill.key}
+                className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition-all duration-150 ${
+                  activePill === pill.key
+                    ? "bg-yellow-400 text-yellow-900 shadow"
+                    : "bg-gray-100 text-gray-500 hover:bg-yellow-100 hover:text-yellow-700"
+                }`}
+                onClick={() => setActivePill(pill.key)}
+                style={{ minHeight: 36 }}
+              >
+                {pill.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </section>
+      </div>
 
       {/* Showcase cards */}
-      <section className="px-5 pb-16 space-y-4">
+      <section className="px-5 pb-16 space-y-4 mt-4">
         {!filtered.length && (
           <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-6 text-sm text-white/70">
             No showcases found. Try a different search or pill.
