@@ -9,8 +9,7 @@ import { getCategoryScoreMode } from '@/lib/showcase-config';
 import { withBasePath } from '@/lib/base-path';
 import ShowcaseCardsSection from '@/components/showcase/ShowcaseCardsSection';
 import Link from 'next/link';
-import { getTopShowcaseCategories } from '@/lib/showcase-discovery-helpers';
-import { getShowcaseDisplayName } from '@/lib/category-utils';
+import { getShowcaseDisplayName, isUuidLike } from '@/lib/category-utils';
 import type { ShowcaseConfig } from '@/lib/showcase-config';
 
 type ShowcasePageClientProps = {
@@ -21,8 +20,21 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
 
   const [search, setSearch] = useState('');
   const [activePill, setActivePill] = useState('all');
-  // Compute top 30 categories from showcase data
-  const pills = useMemo(() => getTopShowcaseCategories(showcases, 30), [showcases]);
+  // Pills: all valid categories, deduped, no UUIDs
+  const pills = useMemo(() => {
+    const seen = new Set<string>();
+    const pillList = [
+      { key: "all", label: "All" },
+      ...showcases
+        .map((s) => ({ key: s.key, label: getShowcaseDisplayName(s) }))
+        .filter((pill) => pill.label && !isUuidLike(pill.key) && !seen.has(pill.label) && seen.add(pill.label)),
+    ];
+    if (typeof window !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.debug('[ShowcasePageClient] pills:', pillList.map(p => p.label));
+    }
+    return pillList;
+  }, [showcases]);
   const scoreMode = getCategoryScoreMode();
   // Find the selected category label for filtering
   const selectedCategory = pills.find((p) => p.key === activePill)?.label;

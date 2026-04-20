@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import ShowcaseCardsSection from '@/components/showcase/ShowcaseCardsSection'
 import { type ShowcaseCardProps } from '@/components/showcase/ShowcaseOptionCard'
-import { slugToDisplayLabel, normalizeCategoryKey, categoryToSlug } from '@/lib/category-utils'
+import { slugToDisplayLabel, normalizeCategoryKey, categoryToSlug, getShowcaseDisplayName, isUuidLike } from '@/lib/category-utils'
 
 interface Props {
   showcases: ShowcaseCardProps[]
@@ -14,16 +14,22 @@ export default function ShowcaseLandingClient({ showcases, scoreMode }: Props) {
   const [search, setSearch] = useState("")
   const [activePill, setActivePill] = useState<string>("all")
 
-  // Pills: top 15 categories by usage
+  // Pills: all valid categories, deduped, no UUIDs
   const pills = useMemo(() => {
-    return [
+    const seen = new Set<string>();
+    const pillList = [
       { key: "all", label: "Food Showcases" },
-      ...showcases.slice(0, 15).map((s) => ({
-        key: s.key,
-        label: s.title,
-      })),
-    ]
-  }, [showcases])
+      ...showcases
+        .map((s) => ({ key: s.key, label: getShowcaseDisplayName(s) }))
+        .filter((pill) => pill.label && !isUuidLike(pill.key) && !seen.has(pill.label) && seen.add(pill.label)),
+    ];
+    // Debug: log pill count
+    if (typeof window !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.debug('[ShowcaseLandingClient] pills:', pillList.map(p => p.label));
+    }
+    return pillList;
+  }, [showcases]);
 
   // Filtered list
   const filtered = useMemo(() => {

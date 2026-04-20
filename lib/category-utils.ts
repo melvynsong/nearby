@@ -1,3 +1,18 @@
+// Returns true if value looks like a UUID or gibberish
+export function isUuidLike(value: string | undefined | null): boolean {
+  if (!value) return false;
+  // UUID v4 or similar
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) || /^[0-9a-f-]{16,}$/i.test(value);
+}
+
+// Formats a dish/category label defensively
+export function formatDishCategoryLabel(value: string | undefined | null): string {
+  if (!value || isUuidLike(value)) return '';
+  // If it's a slug, convert to title case
+  if (value.includes('-')) return slugToDisplayLabel(value);
+  // Otherwise, title case
+  return categoryToDisplayLabel(value);
+}
 // Defensive, premium display label for showcase/category
 export function getShowcaseDisplayName(input: { name?: string; slug?: string; key?: string } | string | undefined | null): string {
   if (!input) return '';
@@ -7,16 +22,11 @@ export function getShowcaseDisplayName(input: { name?: string; slug?: string; ke
   } else if (input.name && typeof input.name === 'string') {
     name = input.name;
   } else if (input.slug && typeof input.slug === 'string') {
-    name = slugToDisplayLabel(input.slug);
+    name = input.slug;
   } else if (input.key && typeof input.key === 'string') {
-    // Defensive: hide UUIDs/IDs
-    if (/^[0-9a-fA-F-]{16,}$/.test(input.key)) return '';
-    name = slugToDisplayLabel(input.key);
+    name = input.key;
   }
-  // Remove gibberish/UUIDs
-  if (/^[0-9a-fA-F-]{16,}$/.test(name)) return '';
-  // Fallback: title case
-  return categoryToDisplayLabel(name);
+  return formatDishCategoryLabel(name);
 }
 // Category normalization and slug helpers for Nearby
 

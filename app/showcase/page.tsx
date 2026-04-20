@@ -9,7 +9,7 @@ export const metadata = {
 
 export default async function Page() {
   const db = getServerSupabaseClient();
-  const limit = getShowcaseListLimit();
-  const showcases = await getAvailableShowcases(db, limit);
+  // Remove limit for full pill/category experience
+  const showcases = await getAvailableShowcases(db, 999);
   return <ShowcasePageClient showcases={showcases} />;
 }
