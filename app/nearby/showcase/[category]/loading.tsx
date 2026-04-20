@@ -2,10 +2,14 @@
 import { useMemo } from 'react'
 
 const MESSAGES = [
-  "Don't be hangry - chef is plating this up.",
+  "Don't be hangry – we're plating this up...",
   'Wok hei in progress...',
   'Simmering the best picks nearby...',
-  'Seasoning your shortlist...'
+  'Seasoning your shortlist...',
+  'Steaming up something tasty...',
+  'Just a dash more flavor...',
+  'Rolling out the noodles...',
+  'Polishing the chopsticks...'
 ]
 
 function getRandomMessage() {

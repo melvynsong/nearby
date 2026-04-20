@@ -16,10 +16,9 @@ function computeCategoryScore(
   }
   return placeCount;
 }
-// Normalize category name for grouping (lowercase, trim, collapse spaces)
-function normalizeCategoryName(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, ' ');
-}
+// Use shared normalization utility
+import { normalizeCategoryKey, canonicalizeCategory } from './category-utils'
+const normalizeCategoryName = normalizeCategoryKey;
 
 // Local row types for aggregation logic
 type CategoryRow = { id: string; name: string };
@@ -116,7 +115,7 @@ export async function getAggregatedShowcases(db: any, mode: string) {
   // Build groupedCategories and uniquePlacesByCategory
   const groupedCategories = new Map<string, { title: string; categoryIds: string[] }>();
   for (const cat of (categoryRows ?? []) as CategoryRow[]) {
-    const normalized = normalizeCategoryName(cat.name);
+    const normalized = canonicalizeCategory(cat.name);
     if (!groupedCategories.has(normalized)) {
       groupedCategories.set(normalized, { title: cat.name, categoryIds: [cat.id] });
     } else {
@@ -128,7 +127,7 @@ export async function getAggregatedShowcases(db: any, mode: string) {
   for (const row of (placeCategoryRows ?? []) as PlaceCategoryRow[]) {
     const category = categoryRows?.find((cat: CategoryRow) => cat.id === row.category_id);
     if (!category) continue;
-    const normalized = normalizeCategoryName(category.name);
+    const normalized = canonicalizeCategory(category.name);
     const set = uniquePlacesByCategory.get(normalized) ?? new Set<string>();
     set.add(row.place_id);
     uniquePlacesByCategory.set(normalized, set);
@@ -139,7 +138,7 @@ export async function getAggregatedShowcases(db: any, mode: string) {
   for (const row of (placeCategoryRows ?? []) as PlaceCategoryRow[]) {
     const category = categoryRows?.find((cat: CategoryRow) => cat.id === row.category_id);
     if (!category) continue;
-    const normalized = normalizeCategoryName(category.name);
+    const normalized = canonicalizeCategory(category.name);
     const keysSet = categoryKeysByPlace.get(row.place_id) ?? new Set<string>();
     keysSet.add(normalized);
     categoryKeysByPlace.set(row.place_id, keysSet);
