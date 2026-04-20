@@ -1,6 +1,7 @@
+
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
 
 export async function middleware(request: NextRequest) {
   // Only protect /nearby/chef route
@@ -8,13 +9,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Get user session from cookies
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session?.user?.id) {
+  // Use the auth-helpers to get the user session from cookies
+  const supabase = createMiddlewareClient({ req: request })
+  const {
+    data: { user }
+  } = await supabase.auth.getUser()
+
+  if (!user?.id) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
@@ -22,7 +23,7 @@ export async function middleware(request: NextRequest) {
   const { data } = await supabase
     .from('nearby_admins')
     .select('id')
-    .eq('user_id', session.user.id)
+    .eq('user_id', user.id)
     .eq('is_active', true)
     .maybeSingle()
   if (!data) {
