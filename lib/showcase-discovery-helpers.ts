@@ -1,5 +1,6 @@
 // Helper to extract and rank up to 30 meaningful, deduped, non-generic categories from showcase data
 import type { ShowcaseConfig } from './showcase-config';
+import { getShowcaseDisplayName } from './category-utils';
 
 const GENERIC_CATEGORY_PATTERNS = [
   /food/i,
@@ -32,7 +33,9 @@ export function getTopShowcaseCategories(showcases: ShowcaseConfig[], max = 30):
       for (const cat of s.categoryIds) {
         if (isMeaningfulCategory(cat)) {
           const key = cat.trim().toLowerCase();
-          if (!freq[key]) freq[key] = { label: cat.trim(), count: 0 };
+          const label = getShowcaseDisplayName({ name: cat });
+          if (!label) continue;
+          if (!freq[key]) freq[key] = { label, count: 0 };
           freq[key].count++;
         }
       }

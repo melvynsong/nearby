@@ -1,6 +1,45 @@
-'use client'
 
-import { useEffect, useState, useCallback, use } from 'react'
+"use client"
+
+import { useState, useEffect, useRef, useCallback, use } from 'react';
+
+const FOODIE_MESSAGES = [
+  { icon: '🍳', get: (s: any) => `Chef is plating this showcase...` },
+  { icon: '🔥', get: (s: any) => `Bringing out the wok hei...` },
+  { icon: '🍜', get: (s: any) => s?.title?.toLowerCase().includes('noodle') ? 'Simmering the prawn broth...' : 'Simmering the broth...' },
+  { icon: '🥢', get: (s: any) => 'Picking the best bites near you...' },
+  { icon: '🍽️', get: (s: any) => 'Curating dishes people really love...' },
+  { icon: '🌶️', get: (s: any) => 'Adding a little extra flavour...' },
+  { icon: '👨‍🍳', get: (s: any) => 'Chef is cooking up your meal...' },
+  { icon: '⭐', get: (s: any) => 'Gathering the crowd favourites...' },
+  { icon: '🦐', get: (s: any) => s?.title?.toLowerCase().includes('prawn') ? 'Simmering the prawn broth...' : 'Hunting down the best prawn noodles...' },
+  { icon: '🥩', get: (s: any) => s?.title?.toLowerCase().includes('ribeye') ? 'Searing the best ribeye picks...' : 'Searing the best picks...' },
+  { icon: '🍗', get: (s: any) => s?.title?.toLowerCase().includes('chicken') ? 'Poaching the favourites...' : 'Poaching the best bites...' },
+  { icon: '📍', get: (s: any) => 'Finding the tastiest spots nearby...' },
+];
+
+function ShowcaseFoodieLoading({ showcase }: { showcase?: any }) {
+  const [idx, setIdx] = useState(0);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Rotate every 1.5s (randomized 1.2-1.8s)
+  useEffect(() => {
+    timeoutRef.current = setTimeout(() => {
+      setIdx((i) => (i + 1) % FOODIE_MESSAGES.length);
+    }, 1200 + Math.random() * 600);
+    return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); };
+  }, [idx]);
+  const msg = FOODIE_MESSAGES[idx];
+  return (
+    <div className="flex flex-col items-center gap-4 py-16 animate-fade-in">
+      <div className="text-6xl md:text-7xl drop-shadow-lg animate-bounce-slow" aria-hidden>{msg.icon}</div>
+      <div className="text-xl md:text-2xl font-extrabold text-yellow-500 mb-2 text-center drop-shadow animate-pulse">
+        {msg.get(showcase)}
+      </div>
+      <div className="w-24 h-3 rounded-full bg-gradient-to-r from-yellow-300 via-pink-200 to-blue-200 animate-pulse shadow-lg" />
+    </div>
+  );
+}
+
 import Link from 'next/link'
 import ShowcasePhotoMosaic from '@/components/showcase/ShowcasePhotoMosaic'
 import ShowcaseLocationPrompt from '@/components/showcase/ShowcaseLocationPrompt'
@@ -28,14 +67,7 @@ type ShowcaseResponse = {
   }
 }
 
-function keyToTitle(key: string): string {
-  const withoutSuffix = key.replace(/-[a-f0-9]{8}$/, '')
-  return withoutSuffix
-    .split('-')
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(' ')
-}
+import { getShowcaseDisplayName } from '@/lib/category-utils';
 
 function useShowcaseLocation(
   items: ShowcaseItem[],
@@ -97,7 +129,8 @@ function useShowcaseLocation(
 
 export default function ShowcasePage({ params }: { params: Promise<{ key: string }> }) {
   const { key } = use(params)
-  const fallbackTitle = keyToTitle(key)
+  // Defensive fallback: use display name util
+  const fallbackTitle = getShowcaseDisplayName({ key })
 
   const [data, setData] = useState<ShowcaseResponse | null>(null)
   const [items, setItems] = useState<ShowcaseItem[]>([])
@@ -322,15 +355,9 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
         )}
 
         {/* Loading */}
-        {loading && (
-          <div className="flex flex-col items-center gap-3 py-16">
-            <div
-              className="h-8 w-8 animate-spin rounded-full"
-              style={{ border: '2px solid #e5e7eb', borderTopColor: '#1f355d' }}
-            />
-            <p className="text-sm text-neutral-400">Loading showcase…</p>
-          </div>
-        )}
+        {loading && <ShowcaseFoodieLoading showcase={data?.config} />}
+
+
 
         {/* Error */}
         {error && (

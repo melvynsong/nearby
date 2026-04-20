@@ -1,3 +1,23 @@
+// Defensive, premium display label for showcase/category
+export function getShowcaseDisplayName(input: { name?: string; slug?: string; key?: string } | string | undefined | null): string {
+  if (!input) return '';
+  let name = '';
+  if (typeof input === 'string') {
+    name = input;
+  } else if (input.name && typeof input.name === 'string') {
+    name = input.name;
+  } else if (input.slug && typeof input.slug === 'string') {
+    name = slugToDisplayLabel(input.slug);
+  } else if (input.key && typeof input.key === 'string') {
+    // Defensive: hide UUIDs/IDs
+    if (/^[0-9a-fA-F-]{16,}$/.test(input.key)) return '';
+    name = slugToDisplayLabel(input.key);
+  }
+  // Remove gibberish/UUIDs
+  if (/^[0-9a-fA-F-]{16,}$/.test(name)) return '';
+  // Fallback: title case
+  return categoryToDisplayLabel(name);
+}
 // Category normalization and slug helpers for Nearby
 
 export function normalizeCategoryKey(name: string): string {

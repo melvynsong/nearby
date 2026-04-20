@@ -10,6 +10,7 @@ import { withBasePath } from '@/lib/base-path';
 import ShowcaseCardsSection from '@/components/showcase/ShowcaseCardsSection';
 import Link from 'next/link';
 import { getTopShowcaseCategories } from '@/lib/showcase-discovery-helpers';
+import { getShowcaseDisplayName } from '@/lib/category-utils';
 import type { ShowcaseConfig } from '@/lib/showcase-config';
 
 type ShowcasePageClientProps = {
@@ -31,7 +32,7 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
         activePill === 'all' ||
         (Array.isArray(config.categoryIds) && config.categoryIds.some((cat) => cat.trim().toLowerCase() === activePill));
       const matchesSearch =
-        search === '' || config.title.toLowerCase().includes(search.toLowerCase());
+        search === '' || getShowcaseDisplayName(config).toLowerCase().includes(search.toLowerCase());
       return matchesCategory && matchesSearch;
     });
   }, [showcases, activePill, search]);
