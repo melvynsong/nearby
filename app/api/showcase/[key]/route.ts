@@ -57,7 +57,7 @@ export async function GET(
     const { data: pcRows, error: pcErr } = await db
       .from('place_categories')
       .select('place_id, category_id')
-      .in('category_id', config.categoryIds)
+      .in('category_id', config.categoryIds ?? [])
 
     if (pcErr) {
       console.error('[Showcase] place_categories fetch error:', pcErr)
@@ -74,7 +74,7 @@ export async function GET(
       return NextResponse.json({
         ok: true,
         items: [],
-        title: config.fullTitle(0),
+        title: `${config.title} (0)`,
         config: { key: config.key, tagline: config.tagline },
       })
     }
@@ -160,14 +160,22 @@ export async function GET(
       }))
 
     // 5. Rank
-    const items = rankShowcaseItems(rawRows, config.rankingStrategy, config.maxItemsToShow)
+    // Only allow valid RankingStrategy values
+    const validStrategy = (config.rankingStrategy === 'rated' || config.rankingStrategy === 'social')
+      ? config.rankingStrategy
+      : 'social';
+    const items = rankShowcaseItems(
+      rawRows,
+      validStrategy,
+      config.maxItemsToShow ?? 20
+    )
 
     // Only publish showcase if we meet minimum threshold
-    if (items.length < config.minItemsToShow) {
+    if (items.length < (config.minItemsToShow ?? 3)) {
       return NextResponse.json({
         ok: true,
         items: [],
-        title: config.fullTitle(0),
+        title: `${config.title} (0)`,
         insufficient: true,
         config: {
           key: config.key,
@@ -186,7 +194,7 @@ export async function GET(
     return NextResponse.json({
       ok: true,
       items,
-      title: config.fullTitle(items.length),
+      title: `${config.title} (${items.length})`,
       config: {
         key: config.key,
         title: config.title,
