@@ -1,43 +1,35 @@
 "use client"
-
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import ShowcaseCardsSection from "@/components/showcase/ShowcaseCardsSection"
 import { getAvailableShowcases } from '@/lib/showcase-config'
 import { getServerSupabaseClient } from '@/lib/server-supabase'
 import { slugToDisplayLabel, normalizeCategoryKey, categoryToSlug } from '@/lib/category-utils'
 
-export default function ShowcaseLanding() {
-  // NOTE: This is a test: hardcode two cards for now to force client rendering
-  const cards = [
-    {
-      key: "prawn noodles",
-      title: "Prawn Noodles",
-      editorialDescription: "A beloved staple in Singapore hawker culture.",
-      categoryUsageCount: 8,
-      tagline: "Top Prawn Noodles places",
-      heroGradientFrom: "#1f355d",
-      heroGradientTo: "#0f3b58",
-      emoji: "🍽️",
-    },
-    {
-      key: "grilled ribeye",
-      title: "Grilled Ribeye",
-      editorialDescription: "Elevating the local dining scene, grilled ribeye showcases tender, juicy cuts with a smoky char.",
-      categoryUsageCount: 2,
-      tagline: "Top Grilled Ribeye places",
-      heroGradientFrom: "#1f355d",
-      heroGradientTo: "#0f3b58",
-      emoji: "🍽️",
-    },
-  ]
+// Fetch showcases client-side for best hydration
+async function fetchShowcases() {
+  // Use API route for SSR/SSG compatibility
+  const res = await fetch("/api/showcase/list")
+  if (!res.ok) return []
+  return res.json()
+}
 
+export default function ShowcaseLanding() {
+  const [cards, setCards] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [activePill, setActivePill] = useState<string>("all")
+
+  useEffect(() => {
+    fetchShowcases().then((data) => {
+      setCards(data)
+      setLoading(false)
+    })
+  }, [])
 
   // Pills: top 15 categories by usage
   const pills = useMemo(() => {
     return [
-      { key: "all", label: "All" },
+      { key: "all", label: "Food Showcases" },
       ...cards.slice(0, 15).map((s) => ({
         key: s.key,
         label: s.title,
@@ -64,8 +56,11 @@ export default function ShowcaseLanding() {
 
   return (
     <div className="flex flex-col gap-4 px-4 pb-8 pt-4">
-      <h1 className="text-2xl font-bold mb-2">Nearby Food Showcases TEST</h1>
-      <p className="text-sm text-neutral-500 mb-2">
+      <div className="mb-2">
+        <span className="inline-block rounded-full bg-yellow-100 text-yellow-700 px-3 py-1 text-xs font-semibold mr-2">FOOD SHOWCASES</span>
+      </div>
+      <h1 className="text-3xl md:text-4xl font-extrabold mb-2 text-yellow-400">Singapore's Best Dishes</h1>
+      <p className="text-sm md:text-base text-neutral-400 mb-2">
         Curated food showcases built from what Singapore's food community actually loves and revisits.
       </p>
       {/* Search */}
@@ -90,9 +85,15 @@ export default function ShowcaseLanding() {
       </div>
       {/* Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-2">
-        <ShowcaseCardsSection cards={filtered} scoreMode="blended" />
+        {loading ? (
+          Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-xl bg-neutral-100 h-32 animate-pulse" />
+          ))
+        ) : (
+          <ShowcaseCardsSection cards={filtered.slice(0, 15)} scoreMode="blended" />
+        )}
       </div>
-      {filtered.length === 0 && (
+      {!loading && filtered.length === 0 && (
         <div className="text-center text-neutral-400 py-12">No showcases found.</div>
       )}
     </div>

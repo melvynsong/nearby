@@ -19,10 +19,11 @@ function getRandomMessage() {
 export default function ShowcaseDetailLoading() {
   const message = useMemo(getRandomMessage, [])
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm">
-      <div className="animate-bounce mb-4 text-5xl">🍜</div>
-      <div className="text-lg font-medium text-[#1f355d] mb-2">{message}</div>
-      <div className="w-16 h-2 rounded-full bg-gradient-to-r from-[#fbbf24] via-[#f472b6] to-[#60a5fa] animate-pulse" />
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gradient-to-br from-yellow-50 via-pink-50 to-blue-50 backdrop-blur-md">
+      <div className="animate-bounce mb-4 text-6xl md:text-7xl drop-shadow-lg">🍜</div>
+      <div className="text-xl md:text-2xl font-extrabold text-yellow-500 mb-2 text-center drop-shadow">Loading Showcase…</div>
+      <div className="text-base md:text-lg font-medium text-[#1f355d] mb-4 text-center max-w-xs">{message}</div>
+      <div className="w-24 h-3 rounded-full bg-gradient-to-r from-[#fbbf24] via-[#f472b6] to-[#60a5fa] animate-pulse shadow-lg" />
     </div>
   )
 }

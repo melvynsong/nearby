@@ -170,24 +170,7 @@ export async function GET(
       config.maxItemsToShow ?? 20
     )
 
-    // Only publish showcase if we meet minimum threshold
-    if (items.length < (config.minItemsToShow ?? 3)) {
-      return NextResponse.json({
-        ok: true,
-        items: [],
-        title: `${config.title} (0)`,
-        insufficient: true,
-        config: {
-          key: config.key,
-          title: config.title,
-          tagline: config.tagline,
-          description: config.editorialDescription,
-          heroGradientFrom: config.heroGradientFrom,
-          heroGradientTo: config.heroGradientTo,
-          emoji: config.emoji,
-        },
-      })
-    }
+    // Publish all showcases regardless of item count (no minimum threshold)
 
     console.log('[Showcase] Built showcase', { key, itemCount: items.length })
 
