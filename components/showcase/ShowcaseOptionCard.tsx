@@ -22,7 +22,7 @@ export default function ShowcaseOptionCard({ config, index }: Props) {
 
   return (
     <Link
-      href={withBasePath(`/showcase/${config.key}`)}
+      href={withBasePath(`/nearby/showcase/${config.key}`)}
       className="group relative flex flex-col sm:flex-row items-stretch justify-between overflow-hidden rounded-3xl min-h-[280px] cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-white/50 shadow-xl border border-white/10 transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl bg-gradient-to-br"
       style={{
         animationDelay: `${delay}ms`,
