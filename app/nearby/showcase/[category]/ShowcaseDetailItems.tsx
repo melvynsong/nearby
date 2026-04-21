@@ -12,7 +12,13 @@ export default async function ShowcaseDetailItems({ category }: { category: stri
     return <div className="text-red-400">Failed to load showcase items.</div>
   }
   if (!data || data.length === 0) {
-    return <div className="text-neutral-400 py-8">No places found for this category yet.</div>
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <div className="text-4xl mb-3">🍽️</div>
+        <div className="text-lg font-bold text-neutral-500 mb-2">No places found for this category yet.</div>
+        <div className="text-base text-neutral-400 mb-4">Be the first to recommend a spot for this showcase!</div>
+      </div>
+    );
   }
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mt-6">
@@ -21,12 +27,14 @@ export default async function ShowcaseDetailItems({ category }: { category: stri
           key={row.place_id}
           className="rounded-3xl bg-white border border-neutral-200 shadow-sm p-5 flex flex-col items-start hover:shadow-lg transition cursor-pointer min-h-[220px]"
         >
-          {row.places?.photo_urls?.length > 0 && (
+          {row.places?.photo_urls?.length > 0 ? (
             <img
               src={row.places.photo_urls[0]}
               alt={row.places.name}
-              className="w-full h-36 object-cover rounded-2xl mb-3"
+              className="w-full h-36 object-cover rounded-2xl mb-3 bg-neutral-100"
             />
+          ) : (
+            <div className="w-full h-36 rounded-2xl mb-3 bg-neutral-100 flex items-center justify-center text-3xl text-neutral-300">🍽️</div>
           )}
           <div className="font-bold text-lg text-neutral-900 mb-1 truncate w-full">{row.places?.name}</div>
           <div className="text-xs text-neutral-500 mb-2 truncate w-full">{row.places?.formatted_address}</div>
