@@ -414,7 +414,7 @@ export default function ShowcasePage({ params }: { params: Promise<{ key: string
                 <p className="text-xs text-neutral-700">
                   {locationModeEnabled
                     ? 'Closest places become larger tiles.'
-                    : 'Top-rated places stay larger by rating rank.'}
+                    : ''}
                 </p>
               </div>
               <div className="flex items-center gap-2">
