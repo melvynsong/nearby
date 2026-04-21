@@ -1,3 +1,11 @@
+// Robust normalization for showcase category comparison
+export function normalizeShowcaseCategory(value: string | undefined | null): string {
+  if (!value) return '';
+  try {
+    value = decodeURIComponent(value);
+  } catch {}
+  return value.trim().toLowerCase().replace(/%20/g, ' ').replace(/\s+/g, ' ');
+}
 // Returns true if value looks like a UUID or gibberish
 export function isUuidLike(value: string | undefined | null): boolean {
   if (!value) return false;

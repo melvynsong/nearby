@@ -10,7 +10,7 @@ import { getCategoryScoreMode, type ShowcaseConfig } from '@/lib/showcase-config
 import { withBasePath } from '@/lib/base-path';
 import ShowcaseCardsSection from '@/components/showcase/ShowcaseCardsSection';
 import Link from 'next/link';
-import { getShowcaseDisplayName, isUuidLike } from '@/lib/category-utils';
+import { getShowcaseDisplayName, isUuidLike, normalizeShowcaseCategory } from '@/lib/category-utils';
 import AppHeader from '@/components/AppHeader';
 
 type ShowcasePageClientProps = {
@@ -18,36 +18,49 @@ type ShowcasePageClientProps = {
 };
 
 export default function ShowcasePageClient({ showcases }: ShowcasePageClientProps) {
+
   const [search, setSearch] = useState('');
   const [activePill, setActivePill] = useState('all');
+
   // Pills: all valid categories, deduped, no UUIDs
   const pills = useMemo(() => {
     const seen = new Set<string>();
     const pillList = [
-      { key: "all", label: "All" },
+      { key: 'all', label: 'All' },
       ...showcases
         .map((s) => ({ key: s.key, label: getShowcaseDisplayName(s) }))
-        .filter((pill) => pill.label && !isUuidLike(pill.key) && !seen.has(pill.label) && seen.add(pill.label)),
+        .filter((pill) => pill.label && !isUuidLike(pill.key) && !seen.has(normalizeShowcaseCategory(pill.label)) && seen.add(normalizeShowcaseCategory(pill.label))),
     ];
     if (typeof window !== 'undefined') {
       // eslint-disable-next-line no-console
-      console.debug('[ShowcasePageClient] pills:', pillList.map(p => p.label));
+      console.debug('[ShowcasePageClient] pills:', pillList.map((p) => p.label));
     }
     return pillList;
   }, [showcases]);
+
   const scoreMode = getCategoryScoreMode();
+
   // Find the selected category label for filtering
   const selectedCategory = pills.find((p) => p.key === activePill)?.label;
+
   const filtered = useMemo(() => {
-    return showcases.filter((config) => {
+    const normPill = normalizeShowcaseCategory(selectedCategory || '');
+    const normSearch = normalizeShowcaseCategory(search);
+    const filteredList = showcases.filter((config) => {
+      const configTitle = getShowcaseDisplayName(config);
+      const normConfig = normalizeShowcaseCategory(configTitle);
       const matchesCategory =
-        activePill === 'all' ||
-        (Array.isArray(config.categoryIds) && config.categoryIds.some((cat) => cat.trim().toLowerCase() === activePill));
+        activePill === 'all' || normConfig === normPill;
       const matchesSearch =
-        search === '' || getShowcaseDisplayName(config).toLowerCase().includes(search.toLowerCase());
+        !search || normConfig.includes(normSearch);
       return matchesCategory && matchesSearch;
     });
-  }, [showcases, activePill, search]);
+    if (typeof window !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.debug('[ShowcasePageClient] activePill:', activePill, '| normPill:', normPill, '| search:', search, '| filtered count:', filteredList.length);
+    }
+    return filteredList;
+  }, [showcases, activePill, search, selectedCategory]);
 
   return (
     <main className="min-h-screen bg-[#f5f6f8] pb-24">

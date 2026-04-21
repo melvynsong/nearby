@@ -21,22 +21,22 @@ export default async function ShowcaseDetailItems({ category }: { category: stri
     );
   }
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mt-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-7 mt-8">
       {data.map((row: any) => (
         <div
           key={row.place_id}
-          className="rounded-3xl bg-white border border-neutral-200 shadow-sm p-5 flex flex-col items-start hover:shadow-lg transition cursor-pointer min-h-[220px]"
+          className="rounded-3xl bg-white/95 border border-neutral-100 shadow-lg p-6 flex flex-col items-start hover:shadow-xl transition cursor-pointer min-h-[220px] backdrop-blur-sm"
         >
           {row.places?.photo_urls?.length > 0 ? (
             <img
               src={row.places.photo_urls[0]}
               alt={row.places.name}
-              className="w-full h-36 object-cover rounded-2xl mb-3 bg-neutral-100"
+              className="w-full h-36 object-cover rounded-2xl mb-4 bg-neutral-100 shadow-sm"
             />
           ) : (
-            <div className="w-full h-36 rounded-2xl mb-3 bg-neutral-100 flex items-center justify-center text-3xl text-neutral-300">🍽️</div>
+            <div className="w-full h-36 rounded-2xl mb-4 bg-neutral-100 flex items-center justify-center text-3xl text-neutral-300">🍽️</div>
           )}
-          <div className="font-bold text-lg text-neutral-900 mb-1 truncate w-full">{row.places?.name}</div>
+          <div className="font-extrabold text-lg text-neutral-900 mb-1 truncate w-full drop-shadow-sm">{row.places?.name}</div>
           <div className="text-xs text-neutral-500 mb-2 truncate w-full">{row.places?.formatted_address}</div>
           <div className="flex gap-2 text-xs text-yellow-700 mb-2">
             <span>⭐ {row.places?.google_rating ?? 'N/A'}</span>
