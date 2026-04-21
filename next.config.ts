@@ -57,7 +57,10 @@ const nextConfig: NextConfig = {
         source: `${publicMountPath}`,
         destination: "/",
       },
-      // Removed rewrite that mapped /nearby/:path* to /:path* to allow dynamic routes under /nearby to resolve correctly
+      {
+        source: `${publicMountPath}/:path*`,
+        destination: "/:path*",
+      },
     ]
   },
 };
