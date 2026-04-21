@@ -31,6 +31,14 @@ export default async function ShowcaseDetailPage({ params }: { params: { categor
   const db = getServerSupabaseClient();
   const showcases = await getAvailableShowcases(db, 50);
   console.log('[ShowcaseDetailPage] showcase count:', showcases.length);
+  // Debug: print all available slugs and titles
+  showcases.forEach((c) => {
+    console.log('[ShowcaseDetailPage] available:', {
+      title: c.title,
+      slug: categoryToSlug(c.title),
+      normalizedName: c.key,
+    });
+  });
   // Find config by slug
   const config = showcases.find((c) => categoryToSlug(c.title) === normalizedSlug);
   if (!config) {
