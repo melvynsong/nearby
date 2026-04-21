@@ -2,6 +2,9 @@
 
 
 import { notFound } from 'next/navigation';
+// Force dynamic rendering for diagnosis
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 import { getShowcaseConfigByKey, getAvailableShowcases } from '@/lib/showcase-config';
 import { getServerSupabaseClient } from '@/lib/server-supabase';
 import { slugToDisplayLabel, normalizeCategoryKey, categoryToSlug, categoryToDisplayLabel } from '@/lib/category-utils';
@@ -14,6 +17,9 @@ import { Metadata } from 'next';
 export async function generateMetadata({ params }: { params: { category: string } }): Promise<Metadata> {
   const rawSlug = params.category;
   const decoded = decodeURIComponent(rawSlug);
+  const canonicalSlug = categoryToSlug(decoded);
+  // Logging for diagnosis
+  console.log('[ShowcaseDetailPage/generateMetadata] rawSlug:', rawSlug, '| decoded:', decoded, '| canonicalSlug:', canonicalSlug);
   const displayTitle = categoryToDisplayLabel(decoded.replace(/-/g, ' '));
   return {
     title: `Nearby - Top ${displayTitle} Places`,
@@ -25,15 +31,15 @@ export default async function ShowcaseDetailPage({ params }: { params: { categor
   const rawParam = params.category;
   const decoded = decodeURIComponent(rawParam);
   const canonicalSlug = categoryToSlug(decoded);
-  // Logging for QA
-  console.log('[ShowcaseDetailPage] rawParam:', rawParam, '| decoded:', decoded, '| canonicalSlug:', canonicalSlug);
+  // Logging for diagnosis
+  console.log('[ShowcaseDetailPage/page] rawParam:', rawParam, '| decoded:', decoded, '| canonicalSlug:', canonicalSlug);
 
   const db = getServerSupabaseClient();
   const showcases = await getAvailableShowcases(db, 50);
-  console.log('[ShowcaseDetailPage] showcase count:', showcases.length);
+  console.log('[ShowcaseDetailPage/page] showcase count:', showcases.length);
   // Debug: print all available titles and canonical slugs
   showcases.forEach((c) => {
-    console.log('[ShowcaseDetailPage] available:', {
+    console.log('[ShowcaseDetailPage/page] available:', {
       title: c.title,
       canonicalSlug: categoryToSlug(c.title),
       key: c.key,
