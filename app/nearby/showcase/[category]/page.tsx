@@ -31,20 +31,20 @@ export default async function ShowcaseDetailPage({ params }: { params: { categor
   const rawParam = params.category;
   const decoded = decodeURIComponent(rawParam);
   const canonicalSlug = categoryToSlug(decoded);
-  // Logging for diagnosis
-  console.log('[ShowcaseDetailPage/page] rawParam:', rawParam, '| decoded:', decoded, '| canonicalSlug:', canonicalSlug);
+  // Enhanced logging for debugging
+  console.log('[ShowcaseDetailPage/page] rawParam:', rawParam);
+  console.log('[ShowcaseDetailPage/page] decoded:', decoded);
+  console.log('[ShowcaseDetailPage/page] canonicalSlug:', canonicalSlug);
 
   const db = getServerSupabaseClient();
   const showcases = await getAvailableShowcases(db, 50);
   console.log('[ShowcaseDetailPage/page] showcase count:', showcases.length);
-  // Debug: print all available titles and canonical slugs
-  showcases.forEach((c) => {
-    console.log('[ShowcaseDetailPage/page] available:', {
-      title: c.title,
-      canonicalSlug: categoryToSlug(c.title),
-      key: c.key,
-    });
-  });
+  const allSlugs = showcases.map((c) => ({
+    title: c.title,
+    canonicalSlug: categoryToSlug(c.title),
+    key: c.key,
+  }));
+  console.log('[ShowcaseDetailPage/page] all available slugs:', allSlugs);
   // Find config by canonical slug
   const config = showcases.find((c) => categoryToSlug(c.title) === canonicalSlug);
   if (!config) {
