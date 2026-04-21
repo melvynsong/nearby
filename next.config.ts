@@ -30,6 +30,7 @@ const assetPrefix = normalizeAssetPrefix(
 
 const nextConfig: NextConfig = {
   ...(assetPrefix ? { assetPrefix } : {}),
+  basePath: publicMountPath,
   async redirects() {
     // Redirect /nearby/showcase/prawn%20noodles or /nearby/showcase/prawn noodles to /nearby/showcase/prawn-noodles
     return [
