@@ -22,25 +22,25 @@ export async function generateMetadata({ params }: { params: { category: string 
 }
 
 export default async function ShowcaseDetailPage({ params }: { params: { category: string } }) {
-  const rawSlug = params.category;
-  const decoded = decodeURIComponent(rawSlug);
-  const normalizedSlug = rawSlug.toLowerCase();
+  const rawParam = params.category;
+  const decoded = decodeURIComponent(rawParam);
+  const canonicalSlug = categoryToSlug(decoded);
   // Logging for QA
-  console.log('[ShowcaseDetailPage] rawSlug:', rawSlug, '| decoded:', decoded, '| normalized:', normalizedSlug);
+  console.log('[ShowcaseDetailPage] rawParam:', rawParam, '| decoded:', decoded, '| canonicalSlug:', canonicalSlug);
 
   const db = getServerSupabaseClient();
   const showcases = await getAvailableShowcases(db, 50);
   console.log('[ShowcaseDetailPage] showcase count:', showcases.length);
-  // Debug: print all available slugs and titles
+  // Debug: print all available titles and canonical slugs
   showcases.forEach((c) => {
     console.log('[ShowcaseDetailPage] available:', {
       title: c.title,
-      slug: categoryToSlug(c.title),
-      normalizedName: c.key,
+      canonicalSlug: categoryToSlug(c.title),
+      key: c.key,
     });
   });
-  // Find config by slug
-  const config = showcases.find((c) => categoryToSlug(c.title) === normalizedSlug);
+  // Find config by canonical slug
+  const config = showcases.find((c) => categoryToSlug(c.title) === canonicalSlug);
   if (!config) {
     return (
       <main className="min-h-screen bg-[#f5f6f8] pb-24">
@@ -62,7 +62,8 @@ export default async function ShowcaseDetailPage({ params }: { params: { categor
   }
 
   // Premium header section (unified with main showcase page)
-  const displayTitle = categoryToDisplayLabel(decoded.replace(/-/g, ' '));
+  // Use config.title for display text
+  const displayTitle = config.title;
   return (
     <main className="min-h-screen bg-[#f5f6f8] pb-24">
       <AppHeader />
