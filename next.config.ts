@@ -30,6 +30,25 @@ const assetPrefix = normalizeAssetPrefix(
 
 const nextConfig: NextConfig = {
   ...(assetPrefix ? { assetPrefix } : {}),
+  async redirects() {
+    // Redirect /nearby/showcase/prawn%20noodles or /nearby/showcase/prawn noodles to /nearby/showcase/prawn-noodles
+    return [
+      {
+        source: `${publicMountPath}/showcase/:slug*`,
+        has: [
+          {
+            type: 'query',
+            key: 'slug',
+            value: '(.*[\s%20].*)',
+          },
+        ],
+        destination: `${publicMountPath}/showcase/:slug*`,
+        permanent: true,
+        // This will be handled in middleware for more complex normalization if needed
+      },
+      // fallback to rewrites
+    ];
+  },
   async rewrites() {
     if (!publicMountPath) return []
 
