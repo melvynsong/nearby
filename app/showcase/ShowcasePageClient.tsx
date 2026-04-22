@@ -1,6 +1,6 @@
 
 "use client";
-import ShowcaseDetailDrawer from '@/components/showcase/ShowcaseDetailDrawer';
+import ShowcaseDetailItemsAccordion from '@/components/showcase/ShowcaseDetailItemsAccordion';
 
 // The canonical showcase list route is /nearby/showcase. Avoid duplicating 'nearby' in path construction.
 import React, { useState, useMemo, useEffect } from 'react';
@@ -22,8 +22,7 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
   const searchParams = useSearchParams();
   const [search, setSearch] = useState('');
   const [activePill, setActivePill] = useState('all');
-  const [selectedShowcase, setSelectedShowcase] = useState<string | null>(null);
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [expandedShowcaseKey, setExpandedShowcaseKey] = useState<string | null>(null);
 
   // Pills: all valid categories, deduped, no UUIDs
   const pills = useMemo(() => {
@@ -53,44 +52,25 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
   const normalizedShowcaseParam = showcaseParam ? normalizeCategoryKey(showcaseParam) : null;
   const validShowcase = normalizedShowcaseParam && showcases.some((c) => categoryToSlug(c.title) === showcaseParam);
 
+  // Auto-expand from query param
   useEffect(() => {
-    if (showcaseParam) {
-      console.log('[ShowcasePageClient] search param detected:', showcaseParam);
-      console.log('[ShowcasePageClient] normalized showcase key:', normalizedShowcaseParam);
-      if (validShowcase) {
-        setSelectedShowcase(showcaseParam);
-        setIsDetailOpen(true);
-        console.log('[ShowcasePageClient] drawer auto-open triggered');
-        // Optionally normalize legacy ?page= to ?p=
-        if (!searchParams.get('p') && searchParams.get('page')) {
-          router.replace(`/nearby/showcase?p=${showcaseParam}`, { scroll: false });
-          console.log('[ShowcasePageClient] legacy ?page= param normalized to ?p=');
-        }
-      } else {
-        setIsDetailOpen(false);
-        setSelectedShowcase(null);
-        console.log('[ShowcasePageClient] invalid param ignored');
-      }
-    } else {
-      setIsDetailOpen(false);
-      setSelectedShowcase(null);
+    if (showcaseParam && validShowcase) {
+      setExpandedShowcaseKey(showcaseParam);
+      console.log('[ShowcasePageClient] query param auto-expand:', showcaseParam);
     }
   }, [showcaseParam, validShowcase]);
 
-  // Sync URL when drawer closes
-  const handleDrawerClose = () => {
-    setIsDetailOpen(false);
-    setSelectedShowcase(null);
-    router.replace('/nearby/showcase', { scroll: false });
-    console.log('[ShowcasePageClient] drawer close, URL param removed');
-  };
-
-  // Sync URL when Explore is clicked
-  const handleExplore = (categorySlug: string) => {
-    router.replace(`/nearby/showcase?p=${categorySlug}`, { scroll: false });
-    setSelectedShowcase(categorySlug);
-    setIsDetailOpen(true);
-    console.log('[ShowcasePageClient] Explore click, param set:', categorySlug);
+  // Accordion expand/collapse logic
+  const handleExpand = (categoryKey: string) => {
+    if (expandedShowcaseKey === categoryKey) {
+      setExpandedShowcaseKey(null);
+      router.replace('/nearby/showcase', { scroll: false });
+      console.log('[ShowcasePageClient] accordion collapse:', categoryKey);
+    } else {
+      setExpandedShowcaseKey(categoryKey);
+      router.replace(`/nearby/showcase?p=${categoryKey}`, { scroll: false });
+      console.log('[ShowcasePageClient] accordion expand:', categoryKey);
+    }
   };
 
 
@@ -113,9 +93,6 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
     }
     return filteredList;
   }, [showcases, activePill, search, selectedCategory]);
-
-  // --- Drawer UI (pseudo, replace with your actual drawer/modal component) ---
-  // Example: <ShowcaseDetailDrawer open={isDetailOpen} showcaseKey={selectedShowcase} onClose={handleDrawerClose} />
 
   return (
     <main className="min-h-screen bg-[#f5f6f8] pb-24">
@@ -168,27 +145,43 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
             </div>
           )}
 
-          <ShowcaseCardsSection
-            scoreMode={scoreMode}
-            cards={filtered.map((config) => ({
-              key: config.key,
-              title: config.title,
-              editorialDescription: config.editorialDescription,
-              categoryUsageCount: config.categoryUsageCount,
-              tagline: config.tagline,
-              heroGradientFrom: config.heroGradientFrom,
-              heroGradientTo: config.heroGradientTo,
-              emoji: config.emoji,
-              onExplore: () => handleExplore(categoryToSlug(config.title)),
-            }))}
-          />
+          {/* Inline accordion expansion for each card */}
+          {filtered.map((config, i) => {
+            const isExpanded = expandedShowcaseKey === config.key;
+            // Find the correct categoryId for data fetch
+            const categoryId = config.categoryIds?.[0] ?? config.key;
+            return (
+              <div key={config.key} className="mb-6">
+                <ShowcaseCardsSection
+                  scoreMode={scoreMode}
+                  cards={[{
+                    key: config.key,
+                    title: config.title,
+                    editorialDescription: config.editorialDescription,
+                    categoryUsageCount: config.categoryUsageCount,
+                    tagline: config.tagline,
+                    heroGradientFrom: config.heroGradientFrom,
+                    heroGradientTo: config.heroGradientTo,
+                    emoji: config.emoji,
+                    onExplore: () => handleExpand(config.key),
+                  }]}
+                />
+                {/* Inline expanded section */}
+                <div
+                  className={`transition-all duration-500 overflow-hidden ${isExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
+                  aria-expanded={isExpanded}
+                >
+                  {isExpanded ? (
+                    <div className="mt-2">
+                      <ShowcaseDetailItemsAccordion categoryId={categoryId} />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
         </section>
-        {/* Showcase detail drawer (full detail experience) */}
-        <ShowcaseDetailDrawer
-          open={isDetailOpen}
-          showcaseKey={selectedShowcase}
-          onClose={handleDrawerClose}
-        />
+        {/* Showcase detail drawer removed. All detail is now inline. */}
         {/* Footer CTA */}
         <section className="border-t border-neutral-200 px-5 py-8 text-center mt-8">
           <p className="text-xs text-neutral-400">
@@ -204,4 +197,5 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
       </div>
     </main>
   );
+
 }
