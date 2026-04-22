@@ -5,22 +5,27 @@
 
 
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { getCategoryScoreMode, type ShowcaseConfig } from '@/lib/showcase-config';
 import { withBasePath } from '@/lib/base-path';
 import ShowcaseCardsSection from '@/components/showcase/ShowcaseCardsSection';
 import Link from 'next/link';
-import { getShowcaseDisplayName, isUuidLike, normalizeShowcaseCategory } from '@/lib/category-utils';
+import { getShowcaseDisplayName, isUuidLike, normalizeShowcaseCategory, categoryToSlug, normalizeCategoryKey } from '@/lib/category-utils';
 import AppHeader from '@/components/AppHeader';
 
 type ShowcasePageClientProps = {
   showcases: ShowcaseConfig[];
 };
 
-export default function ShowcasePageClient({ showcases }: ShowcasePageClientProps) {
 
+export default function ShowcasePageClient({ showcases }: ShowcasePageClientProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [search, setSearch] = useState('');
   const [activePill, setActivePill] = useState('all');
+  const [selectedShowcase, setSelectedShowcase] = useState<string | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
 
   // Pills: all valid categories, deduped, no UUIDs
   const pills = useMemo(() => {
@@ -39,10 +44,46 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
   }, [showcases]);
 
   const scoreMode = getCategoryScoreMode();
-
-  // Find the selected category label for filtering
   const selectedCategory = pills.find((p) => p.key === activePill)?.label;
 
+  // --- Query param logic ---
+  const showcaseParam = searchParams.get('p');
+  const sortParam = searchParams.get('sort');
+  // Normalize and validate
+  const normalizedShowcaseParam = showcaseParam ? normalizeCategoryKey(showcaseParam) : null;
+  const validShowcase = normalizedShowcaseParam && showcases.some((c) => categoryToSlug(c.title) === showcaseParam);
+
+  // Auto-open drawer if valid param
+  useEffect(() => {
+    if (showcaseParam) {
+      console.log('[ShowcasePageClient] showcaseParam detected:', showcaseParam);
+      if (validShowcase) {
+        setSelectedShowcase(showcaseParam);
+        setIsDetailOpen(true);
+        console.log('[ShowcasePageClient] drawer auto-open triggered');
+      } else {
+        setIsDetailOpen(false);
+        setSelectedShowcase(null);
+        console.log('[ShowcasePageClient] invalid param ignored');
+      }
+    }
+  }, [showcaseParam, validShowcase]);
+
+  // Sync URL when drawer closes
+  const handleDrawerClose = () => {
+    setIsDetailOpen(false);
+    setSelectedShowcase(null);
+    router.replace('/nearby/showcase', { scroll: false });
+  };
+
+  // Sync URL when Explore is clicked
+  const handleExplore = (categorySlug: string) => {
+    router.replace(`/nearby/showcase?p=${categorySlug}`, { scroll: false });
+    setSelectedShowcase(categorySlug);
+    setIsDetailOpen(true);
+  };
+
+  // Filtered list logic (unchanged)
   const filtered = useMemo(() => {
     const normPill = normalizeShowcaseCategory(selectedCategory || '');
     const normSearch = normalizeShowcaseCategory(search);
@@ -61,6 +102,9 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
     }
     return filteredList;
   }, [showcases, activePill, search, selectedCategory]);
+
+  // --- Drawer UI (pseudo, replace with your actual drawer/modal component) ---
+  // Example: <ShowcaseDetailDrawer open={isDetailOpen} showcaseKey={selectedShowcase} onClose={handleDrawerClose} />
 
   return (
     <main className="min-h-screen bg-[#f5f6f8] pb-24">
@@ -124,9 +168,15 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
               heroGradientFrom: config.heroGradientFrom,
               heroGradientTo: config.heroGradientTo,
               emoji: config.emoji,
+              // Add handler for Explore button
+              onExplore: () => handleExplore(categoryToSlug(config.title)),
             }))}
           />
         </section>
+        {/* Drawer/modal for showcase detail (pseudo, replace with your actual component) */}
+        {/* {isDetailOpen && selectedShowcase && (
+          <ShowcaseDetailDrawer open={isDetailOpen} showcaseKey={selectedShowcase} onClose={handleDrawerClose} />
+        )} */}
         {/* Footer CTA */}
         <section className="border-t border-neutral-200 px-5 py-8 text-center mt-8">
           <p className="text-xs text-neutral-400">
