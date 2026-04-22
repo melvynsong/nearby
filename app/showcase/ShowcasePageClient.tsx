@@ -1,10 +1,8 @@
 
-// The canonical showcase list route is /nearby/showcase. Avoid duplicating 'nearby' in path construction.
 "use client";
+import ShowcaseDetailDrawer from '@/components/showcase/ShowcaseDetailDrawer';
 
-
-
-
+// The canonical showcase list route is /nearby/showcase. Avoid duplicating 'nearby' in path construction.
 import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getCategoryScoreMode, type ShowcaseConfig } from '@/lib/showcase-config';
@@ -95,7 +93,8 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
     console.log('[ShowcasePageClient] Explore click, param set:', categorySlug);
   };
 
-  // Filtered list logic (unchanged)
+
+  // Filtered list logic
   const filtered = useMemo(() => {
     const normPill = normalizeShowcaseCategory(selectedCategory || '');
     const normSearch = normalizeShowcaseCategory(search);
@@ -184,10 +183,12 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
             }))}
           />
         </section>
-        {/* Drawer/modal for showcase detail (pseudo, replace with your actual component) */}
-        {/* {isDetailOpen && selectedShowcase && (
-          <ShowcaseDetailDrawer open={isDetailOpen} showcaseKey={selectedShowcase} onClose={handleDrawerClose} />
-        )} */}
+        {/* Showcase detail drawer (full detail experience) */}
+        <ShowcaseDetailDrawer
+          open={isDetailOpen}
+          showcaseKey={selectedShowcase}
+          onClose={handleDrawerClose}
+        />
         {/* Footer CTA */}
         <section className="border-t border-neutral-200 px-5 py-8 text-center mt-8">
           <p className="text-xs text-neutral-400">
