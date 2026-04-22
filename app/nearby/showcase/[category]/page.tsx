@@ -28,6 +28,7 @@ export async function generateMetadata({ params }: { params: { category: string 
 }
 
 export default async function ShowcaseDetailPage({ params }: { params: { category: string } }) {
+  console.log('[ShowcaseDetailPage/page] CATCHALL params:', params);
   const rawParam = params.category;
   const decoded = decodeURIComponent(rawParam);
   const canonicalSlug = categoryToSlug(decoded);
