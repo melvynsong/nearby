@@ -5,7 +5,7 @@ import ShowcaseOptionCard, { type ShowcaseCardProps } from '@/components/showcas
 import { apiPath } from '@/lib/base-path'
 
 type Props = {
-  cards: ShowcaseCardProps[]
+  cards: (ShowcaseCardProps & { onExplore?: () => void })[]
   scoreMode: 'places' | 'recommendations' | 'blended'
 }
 
@@ -57,14 +57,13 @@ export default function ShowcaseCardsSection({ cards, scoreMode }: Props) {
     <>
       {cards.map((card, i) => {
         const aiCopy = descriptions[card.title]
-        const mergedCard: ShowcaseCardProps = {
+        const mergedCard: ShowcaseCardProps & { onExplore?: () => void } = {
           ...card,
           editorialDescription: typeof aiCopy === 'string' && aiCopy.trim()
             ? aiCopy.trim()
             : card.editorialDescription,
         }
-
-        return <ShowcaseOptionCard key={card.key} config={mergedCard} index={i} />
+        return <ShowcaseOptionCard key={card.key} config={mergedCard} index={i} onExplore={card.onExplore} />
       })}
     </>
   )

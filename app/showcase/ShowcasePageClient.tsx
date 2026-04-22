@@ -46,26 +46,36 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
   const scoreMode = getCategoryScoreMode();
   const selectedCategory = pills.find((p) => p.key === activePill)?.label;
 
+
   // --- Query param logic ---
-  const showcaseParam = searchParams.get('p');
+  // Support both ?p= and legacy ?page=, prefer ?p=
+  const showcaseParam = searchParams.get('p') ?? searchParams.get('page');
   const sortParam = searchParams.get('sort');
   // Normalize and validate
   const normalizedShowcaseParam = showcaseParam ? normalizeCategoryKey(showcaseParam) : null;
   const validShowcase = normalizedShowcaseParam && showcases.some((c) => categoryToSlug(c.title) === showcaseParam);
 
-  // Auto-open drawer if valid param
   useEffect(() => {
     if (showcaseParam) {
-      console.log('[ShowcasePageClient] showcaseParam detected:', showcaseParam);
+      console.log('[ShowcasePageClient] search param detected:', showcaseParam);
+      console.log('[ShowcasePageClient] normalized showcase key:', normalizedShowcaseParam);
       if (validShowcase) {
         setSelectedShowcase(showcaseParam);
         setIsDetailOpen(true);
         console.log('[ShowcasePageClient] drawer auto-open triggered');
+        // Optionally normalize legacy ?page= to ?p=
+        if (!searchParams.get('p') && searchParams.get('page')) {
+          router.replace(`/nearby/showcase?p=${showcaseParam}`, { scroll: false });
+          console.log('[ShowcasePageClient] legacy ?page= param normalized to ?p=');
+        }
       } else {
         setIsDetailOpen(false);
         setSelectedShowcase(null);
         console.log('[ShowcasePageClient] invalid param ignored');
       }
+    } else {
+      setIsDetailOpen(false);
+      setSelectedShowcase(null);
     }
   }, [showcaseParam, validShowcase]);
 
@@ -74,6 +84,7 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
     setIsDetailOpen(false);
     setSelectedShowcase(null);
     router.replace('/nearby/showcase', { scroll: false });
+    console.log('[ShowcasePageClient] drawer close, URL param removed');
   };
 
   // Sync URL when Explore is clicked
@@ -81,6 +92,7 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
     router.replace(`/nearby/showcase?p=${categorySlug}`, { scroll: false });
     setSelectedShowcase(categorySlug);
     setIsDetailOpen(true);
+    console.log('[ShowcasePageClient] Explore click, param set:', categorySlug);
   };
 
   // Filtered list logic (unchanged)
@@ -168,7 +180,6 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
               heroGradientFrom: config.heroGradientFrom,
               heroGradientTo: config.heroGradientTo,
               emoji: config.emoji,
-              // Add handler for Explore button
               onExplore: () => handleExplore(categoryToSlug(config.title)),
             }))}
           />
