@@ -13,11 +13,18 @@ export default async function ShowcaseDetailItems({ category }: { category: stri
       places ( name, formatted_address, photo_urls, google_rating, google_rating_count )
     `)
     .eq('category_id', category)
+    .not('food_categories.group_id', 'is', null)
     .eq('food_categories.groups.visibility', 'public')
   if (error) {
-    return <div className="text-red-400">Failed to load showcase items.</div>
+    if (typeof console !== 'undefined') {
+      console.log('[ShowcaseDetailItems.tsx] Error or no data', { error, data });
+    }
+    return <div className="text-red-400">Failed to load showcase items.</div>;
   }
   if (!data || data.length === 0) {
+    if (typeof console !== 'undefined') {
+      console.log('[ShowcaseDetailItems.tsx] No data for category', { category });
+    }
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <div className="text-4xl mb-3">🍽️</div>
@@ -25,6 +32,11 @@ export default async function ShowcaseDetailItems({ category }: { category: stri
         <div className="text-base text-neutral-400 mb-4">Be the first to recommend a spot for this showcase!</div>
       </div>
     );
+  }
+  if (typeof console !== 'undefined') {
+    console.log('[ShowcaseDetailItems.tsx] Fetched rows:', data.length);
+    const groupIds = data.map((row: any) => row.food_categories?.groups?.id).filter(Boolean);
+    console.log('[ShowcaseDetailItems.tsx] Group IDs:', groupIds);
   }
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-7 mt-8">

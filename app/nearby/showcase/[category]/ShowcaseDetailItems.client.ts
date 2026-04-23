@@ -16,8 +16,19 @@ export async function getShowcaseItemsForCategory(categoryKey: string): Promise<
       places ( name, formatted_address, photo_urls, google_rating, google_rating_count, lat, lng, google_place_id )
     `)
     .eq('category_id', categoryId)
+    .not('food_categories.group_id', 'is', null)
     .eq('food_categories.groups.visibility', 'public')
-  if (error || !data) return [];
+  if (error || !data) {
+    if (typeof console !== 'undefined') {
+      console.log('[ShowcaseDetailItems.client] Error or no data', { error, data });
+    }
+    return [];
+  }
+  if (typeof console !== 'undefined') {
+    console.log('[ShowcaseDetailItems.client] Fetched rows:', data.length);
+    const groupIds = data.map((row: any) => row.food_categories?.groups?.id).filter(Boolean);
+    console.log('[ShowcaseDetailItems.client] Group IDs:', groupIds);
+  }
   // Normalize to ShowcaseItem shape
   return data.map((row: any, idx: number) => ({
     placeId: row.place_id,
