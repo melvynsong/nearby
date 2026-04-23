@@ -50,15 +50,24 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
   const sortParam = searchParams.get('sort');
   // Normalize and validate
   const normalizedShowcaseParam = showcaseParam ? normalizeCategoryKey(showcaseParam) : null;
-  const validShowcase = normalizedShowcaseParam && showcases.some((c) => categoryToSlug(c.title) === showcaseParam);
-
-  // Auto-expand from query param
+  // Accept any showcaseParam for expansion, fallback to normalized key if not found
   useEffect(() => {
-    if (showcaseParam && validShowcase) {
-      setExpandedShowcaseKey(showcaseParam);
-      console.log('[ShowcasePageClient] query param auto-expand:', showcaseParam);
+    if (showcaseParam) {
+      // Try to match by slug, then by normalized key, else just expand raw param
+      const matchBySlug = showcases.find((c) => categoryToSlug(c.title) === showcaseParam);
+      const matchByNorm = showcases.find((c) => normalizeCategoryKey(c.title) === normalizedShowcaseParam);
+      if (matchBySlug) {
+        setExpandedShowcaseKey(matchBySlug.key);
+        console.log('[ShowcasePageClient] query param auto-expand (slug):', showcaseParam);
+      } else if (matchByNorm) {
+        setExpandedShowcaseKey(matchByNorm.key);
+        console.log('[ShowcasePageClient] query param auto-expand (normalized):', normalizedShowcaseParam);
+      } else {
+        setExpandedShowcaseKey(showcaseParam);
+        console.log('[ShowcasePageClient] query param auto-expand (raw):', showcaseParam);
+      }
     }
-  }, [showcaseParam, validShowcase]);
+  }, [showcaseParam, normalizedShowcaseParam, showcases]);
 
   // Accordion expand/collapse logic
   const handleExpand = (categoryKey: string) => {

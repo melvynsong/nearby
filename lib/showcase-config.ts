@@ -98,10 +98,11 @@ export async function getShowcaseConfigByKey(db: any, key: string): Promise<Show
 }
 
 export async function getAggregatedShowcases(db: any, mode: string) {
-  // Fetch and check categoryRows and placeCategoryRows first
+  // Fetch only food_categories from public groups
   const { data: categoryRows, error: categoryErr } = await db
     .from('food_categories')
-    .select('id, name')
+    .select('id, name, group_id, groups!inner(id, visibility)')
+    .eq('groups.visibility', 'public')
   if (categoryErr) {
     throw new Error(`Failed to load food categories: ${categoryErr.message}`)
   }
