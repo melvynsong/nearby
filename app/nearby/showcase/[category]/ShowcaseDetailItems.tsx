@@ -3,11 +3,17 @@ import { supabase } from '@/lib/supabase'
 import { categoryToSlug, normalizeCategoryKey } from '@/lib/category-utils'
 
 export default async function ShowcaseDetailItems({ category }: { category: string }) {
-  // Fetch places for this category
+  // Fetch places for this category, only from public groups
   const { data, error } = await supabase
     .from('place_categories')
-    .select('place_id, places ( name, formatted_address, photo_urls, google_rating, google_rating_count )')
+    .select(`
+      place_id,
+      category_id,
+      food_categories!inner(id, group_id, groups!inner(id, visibility)),
+      places ( name, formatted_address, photo_urls, google_rating, google_rating_count )
+    `)
     .eq('category_id', category)
+    .eq('food_categories.groups.visibility', 'public')
   if (error) {
     return <div className="text-red-400">Failed to load showcase items.</div>
   }
