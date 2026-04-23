@@ -175,7 +175,7 @@ export async function getAggregatedShowcases(db: any, mode: string) {
     1,
   );
 
-  const aggregates = [...groupedCategories.entries()]
+  const aggregatesRaw = [...groupedCategories.entries()]
     .map(([normalizedName, group]) => {
       const placeCount = uniquePlacesByCategory.get(normalizedName)?.size ?? 0;
       const recommendationCount = recommendationsByCategory.get(normalizedName)?.size ?? 0;
@@ -194,14 +194,26 @@ export async function getAggregatedShowcases(db: any, mode: string) {
         recommendationCount,
         score,
       };
-    })
-    // No minimum threshold: show all categories
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      if (b.recommendationCount !== a.recommendationCount) return b.recommendationCount - a.recommendationCount;
-      if (b.usageCount !== a.usageCount) return b.usageCount - a.usageCount;
-      return a.title.localeCompare(b.title);
     });
 
-  return aggregates;
+  // Debug: log raw and filtered category counts
+  if (typeof console !== 'undefined') {
+    console.log('[Showcase] Raw category aggregates:', aggregatesRaw.map(a => ({ name: a.title, count: a.usageCount })));
+  }
+
+  // Only keep categories with at least one public eligible food spot
+  const aggregates = aggregatesRaw.filter(a => a.usageCount > 0);
+
+  if (typeof console !== 'undefined') {
+    const hidden = aggregatesRaw.filter(a => a.usageCount === 0).map(a => a.title);
+    console.log('[Showcase] Categories hidden (no public spots):', hidden);
+    console.log('[Showcase] Final visible categories:', aggregates.map(a => a.title));
+  }
+
+  return aggregates.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.recommendationCount !== a.recommendationCount) return b.recommendationCount - a.recommendationCount;
+    if (b.usageCount !== a.usageCount) return b.usageCount - a.usageCount;
+    return a.title.localeCompare(b.title);
+  });
 }
