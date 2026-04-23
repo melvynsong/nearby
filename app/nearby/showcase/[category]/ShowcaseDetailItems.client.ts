@@ -6,10 +6,17 @@ import { ShowcaseItem } from '@/lib/showcase-utils'
 export async function getShowcaseItemsForCategory(categoryKey: string): Promise<ShowcaseItem[]> {
   // Map slug to category_id if needed (assume slug is category_id for now)
   const categoryId = categoryKey;
+  // Join place_categories -> food_categories -> groups, filter for public groups
   const { data, error } = await supabase
     .from('place_categories')
-    .select('place_id, places ( name, formatted_address, photo_urls, google_rating, google_rating_count, lat, lng )')
+    .select(`
+      place_id,
+      category_id,
+      food_categories!inner(id, group_id, groups!inner(id, visibility)),
+      places ( name, formatted_address, photo_urls, google_rating, google_rating_count, lat, lng )
+    `)
     .eq('category_id', categoryId)
+    .eq('food_categories.groups.visibility', 'public')
   if (error || !data) return [];
   // Normalize to ShowcaseItem shape
   return data.map((row: any, idx: number) => ({
