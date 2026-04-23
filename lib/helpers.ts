@@ -43,9 +43,13 @@ export function mapUrl(
   lat: number | null,
   lng: number | null,
   name: string,
+  googlePlaceId?: string | null
 ): string {
-  if (lat != null && lng != null) {
-    return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+  if (googlePlaceId) {
+    return `https://www.google.com/maps/place/?q=place_id:${googlePlaceId}`;
   }
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}`
+  if (lat != null && lng != null) {
+    return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}`;
 }

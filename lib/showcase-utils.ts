@@ -16,6 +16,7 @@ export type ShowcaseItem = {
   saveCount: number
   score: number
   aiDescription: string | null
+  googlePlaceId?: string | null
   distanceKm?: number | null
 }
 

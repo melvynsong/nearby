@@ -13,7 +13,7 @@ export async function getShowcaseItemsForCategory(categoryKey: string): Promise<
       place_id,
       category_id,
       food_categories!inner(id, group_id, groups!inner(id, visibility)),
-      places ( name, formatted_address, photo_urls, google_rating, google_rating_count, lat, lng )
+      places ( name, formatted_address, photo_urls, google_rating, google_rating_count, lat, lng, google_place_id )
     `)
     .eq('category_id', categoryId)
     .eq('food_categories.groups.visibility', 'public')
@@ -33,5 +33,6 @@ export async function getShowcaseItemsForCategory(categoryKey: string): Promise<
     score: row.places?.google_rating ?? 0,
     aiDescription: null,
     rank: idx + 1,
+    googlePlaceId: row.places?.google_place_id ?? null,
   }))
 }

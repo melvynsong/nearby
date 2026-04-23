@@ -104,7 +104,7 @@ export default function ShowcaseDetailItemsAccordion({ categoryId }: ShowcaseDet
       {!loading && !error && displayItems.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-7 mt-2">
           {displayItems.map((item) => {
-            const mapsHref = mapUrl(item.lat, item.lng, item.placeName);
+            const mapsHref = mapUrl(item.lat, item.lng, item.placeName, item.googlePlaceId);
             return (
               <a
                 key={item.placeId}
