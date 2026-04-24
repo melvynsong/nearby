@@ -51,7 +51,7 @@ export default async function ShowcaseDetailPage({ params }: { params: { categor
   if (!config) {
     return (
       <main className="min-h-screen bg-[#f5f6f8] pb-24">
-        <AppHeader />
+        {/* Header is now only rendered globally. */}
         <div className="nearby-shell mx-auto w-full max-w-3xl px-4 pt-6 flex flex-col items-center justify-center min-h-[60vh]">
           <nav className="mb-3 flex items-center text-xs text-neutral-400 font-medium gap-1 whitespace-nowrap overflow-x-auto" aria-label="Breadcrumb">
             <Link href="/nearby" className="hover:underline text-neutral-500 font-semibold">Home</Link>

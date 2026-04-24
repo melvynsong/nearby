@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import AppFooter from "@/components/AppFooter";
 import AppHeader from "@/components/AppHeader";
 import { withBasePath } from "@/lib/base-path";
-import { isCurrentUserAdminChef } from "@/lib/adminchef";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -33,19 +32,13 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  let isAdminChef = false;
-  try {
-    isAdminChef = await isCurrentUserAdminChef();
-  } catch (e) {
-    isAdminChef = false;
-  }
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <AppHeader isAdminChef={isAdminChef} />
+        <AppHeader />
         <div className="flex-1">{children}</div>
         <AppFooter />
       </body>

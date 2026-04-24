@@ -579,48 +579,7 @@ export default function NearbyHome() {
   return (
     <main className="min-h-screen bg-[#f5f6f8] pb-24">
 
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <AppHeader
-        right={
-          <div className="flex items-center gap-2">
-            {isAdmin && (
-              <button
-                onClick={() => router.push(withBasePath('/nearby/chef'))}
-                className="inline-flex h-8 items-center gap-1.5 rounded-full border border-yellow-300 bg-yellow-50 px-3 text-xs font-semibold text-yellow-900 shadow-sm transition-all hover:bg-yellow-100 active:scale-[0.98]"
-                style={{ fontFamily: 'var(--font-sf, inherit)' }}
-                title="Nearby Chef Console"
-              >
-                <span role="img" aria-label="Chef" className="mr-1">⭐</span> Chef
-              </button>
-            )}
-            <div className="hidden min-[390px]:block text-right">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Signed in</p>
-              <p className="text-xs font-medium text-neutral-700 leading-none">{session.memberName}</p>
-            </div>
-            <button
-              onClick={() => router.push(withBasePath('/settings'))}
-              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 text-xs font-medium text-neutral-700 shadow-sm transition-all hover:bg-neutral-100 active:scale-[0.98]"
-            >
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <circle cx="12" cy="12" r="3.5" />
-                <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 1 1-4 0v-.08A1.7 1.7 0 0 0 8.96 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 1 1 0-4h.08A1.7 1.7 0 0 0 4.6 8.96a1.7 1.7 0 0 0-.34-1.87L4.2 7.03A2 2 0 1 1 7.03 4.2l.06.06A1.7 1.7 0 0 0 8.96 4.6 1.7 1.7 0 0 0 10 3.04V3a2 2 0 1 1 4 0v.08A1.7 1.7 0 0 0 15.04 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 8.96 1.7 1.7 0 0 0 20.96 10H21a2 2 0 1 1 0 4h-.08A1.7 1.7 0 0 0 19.4 15z" />
-              </svg>
-              <span>Settings</span>
-            </button>
-            <button
-              onClick={() => void handleLogout()}
-              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50/70 px-3 text-xs font-medium text-rose-700 transition-all hover:bg-rose-100 active:scale-[0.98]"
-            >
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <path d="M16 17l5-5-5-5" />
-                <path d="M21 12H9" />
-              </svg>
-              <span>Logout</span>
-            </button>
-          </div>
-        }
-      />
+      {/* Header is now only rendered globally. */}
 
       {/* ── Header CTA: Explore Showcase ─────────────────────────────────── */}
       <div className="nearby-shell pt-3">
