@@ -106,7 +106,6 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
 
   return (
     <main className="min-h-screen bg-[#f5f6f8] pb-24">
-      <AppHeader />
       <div className="nearby-shell mx-auto w-full max-w-3xl px-4 pt-6">
         {/* Breadcrumb */}
         <nav className="mb-3 flex items-center text-xs text-neutral-400 font-medium gap-1 whitespace-nowrap overflow-x-auto" aria-label="Breadcrumb">
@@ -199,7 +198,7 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
             {UIMessages.showcaseNothingHere}
           </p>
           <Link
-            href={withBasePath('/')}
+            href={withBasePath('/')} 
             className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-neutral-500 underline decoration-dotted hover:text-neutral-700 transition-colors"
           >
             {UIMessages.groupSettingsLoading}
