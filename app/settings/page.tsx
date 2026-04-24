@@ -944,7 +944,114 @@ function SettingsPage() {
           <span>Back</span>
         </button>
         <h1 className="text-2xl font-bold tracking-tight text-neutral-900">Settings</h1>
-        {/* ...existing code... */}
+
+        {isPasscodeSetup && (
+          <div className="mt-4 rounded-xl border border-[#d5dceb] bg-[#eef3fb] px-4 py-3 text-sm text-[#1f355d]">
+            <span className="font-semibold">One more step:</span> set your personal passcode below.
+          </div>
+        )}
+
+        {loading ? (
+          <div className="mt-10 flex items-center gap-2.5">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#e5e7eb] border-t-[#1f355d]" />
+            <p className="text-sm text-neutral-400">{require('@/lib/ui-messages').UIMessages.loadingGroupSettings}</p>
+          </div>
+        ) : loadError ? (
+          <div className="mt-6">
+            <ErrorState
+              title={require('@/lib/ui-messages').UIMessages.errorGeneric}
+              message={require('@/lib/ui-messages').UIMessages.errorGroupSettings}
+              onPrimary={() => void loadSettings()}
+              secondaryLabel="Go Back"
+              onSecondary={() => router.push(withBasePath('/nearby'))}
+            />
+          </div>
+        ) : profile ? (
+          <div className="mt-6 space-y-5">
+            {/* ── Profile ─────────────────────────────────────────────────── */}
+            <section className="rounded-2xl border border-[#dfe5f0] bg-white p-5 shadow-sm">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-neutral-500 mb-4">Profile</h2>
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={profile.fullName}
+                  onChange={(e) => setProfile((prev) => prev ? { ...prev, fullName: e.target.value } : prev)}
+                  placeholder="Name"
+                  className="w-full rounded-xl border border-[#d6ddeb] px-4 py-2.5 text-sm outline-none focus:border-[#1f355d] focus:ring-2 focus:ring-[#e6edf9]"
+                />
+                <input
+                  type="tel"
+                  value={profile.phoneNumber}
+                  onChange={(e) => setProfile((prev) => prev ? { ...prev, phoneNumber: e.target.value } : prev)}
+                  placeholder="Telephone number"
+                  className="w-full rounded-xl border border-[#d6ddeb] px-4 py-2.5 text-sm outline-none focus:border-[#1f355d] focus:ring-2 focus:ring-[#e6edf9]"
+                />
+                <div className="relative">
+                  <input
+                    type={showPasscode ? 'text' : 'password'}
+                    value={personalPasscode}
+                    onChange={(e) => setPersonalPasscode(e.target.value)}
+                    placeholder="Personal passcode (optional)"
+                    className="w-full rounded-xl border border-[#d6ddeb] px-4 py-2.5 pr-12 text-sm outline-none focus:border-[#1f355d] focus:ring-2 focus:ring-[#e6edf9]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasscode((p) => !p)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-neutral-400 hover:text-neutral-600"
+                  >
+                    {showPasscode ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
+              {profileError && <p className="mt-3 text-sm text-amber-700">{profileError}</p>}
+              {personalPasscodeError && <p className="mt-3 text-sm text-amber-700">{personalPasscodeError}</p>}
+              {profileSaved && <p className="mt-3 text-sm text-[#1f355d]">Profile updated.</p>}
+              {personalPasscodeSaved && <p className="mt-2 text-sm text-[#1f355d]">Personal passcode saved.</p>}
+              <button
+                onClick={() => void saveProfile()}
+                disabled={profileSaving}
+                className="mt-4 w-full rounded-xl bg-[#1f355d] px-4 py-3 text-sm font-medium text-white disabled:opacity-50 hover:bg-[#162847]"
+              >
+                {profileSaving ? 'Saving…' : 'Save profile'}
+              </button>
+            </section>
+
+            {/* ── My Groups ───────────────────────────────────────────────── */}
+            {allGroups.length > 0 && (
+              <div>
+                <div className="mb-3 flex items-center justify-between px-1">
+                  <h2 className="text-xs font-semibold uppercase tracking-widest text-neutral-500">My Groups</h2>
+                  <span className="text-[11px] text-neutral-400">
+                    {allGroups.length} group{allGroups.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {allGroups.map((group) => (
+                    <GroupCard
+                      key={group.groupId}
+                      summary={group}
+                      userId={profile.userId}
+                      expanded={expandedGroupId === group.groupId}
+                      onExpand={() => setExpandedGroupId(group.groupId)}
+                      onCollapse={() => setExpandedGroupId(null)}
+                      onGroupDeleted={handleGroupDeleted}
+                      onGroupRenamed={handleGroupRenamed}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── Create New Group CTA ─────────────────────────────────────── */}
+            <button
+              type="button"
+              onClick={() => router.push(withBasePath('/create-group'))}
+              className="w-full rounded-2xl border border-dashed border-[#b8c5e0] bg-white px-5 py-4 text-sm font-medium text-[#1f355d] transition-colors hover:bg-[#eef3fb]"
+            >
+              + Create New Group
+            </button>
+          </div>
+        ) : null}
       </div>
     </main>
   )
