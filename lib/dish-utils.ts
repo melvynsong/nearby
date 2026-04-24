@@ -3,7 +3,7 @@
 // while preserving display-quality names (no over-flattening).
 //
 // Tuning note: add new aliases here as users submit corrections over time.
-// getDishFamily is intentionally coarse — use for context hints, not hard routing.
+// getDishFamily is intentionally coarse - use for context hints, not hard routing.
 
 import type { DishSuggestion, PlaceDishStat } from './dish-analysis-types'
 

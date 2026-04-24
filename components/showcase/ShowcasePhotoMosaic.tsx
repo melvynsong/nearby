@@ -16,7 +16,7 @@ function mapsUrl(item: ShowcaseItem): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.placeName)}`
 }
 
-// Determine tile span class based on rank or distance — creates the collage feel
+// Determine tile span class based on rank or distance - creates the collage feel
 function tileClass(rank: number, displayRank?: number): string {
   const position = displayRank ?? rank
   if (position === 1) return 'col-span-2 row-span-2'   // hero tile: 2×2
@@ -60,7 +60,7 @@ function MosaicTile({ item, rank, displayRank, locationMode = false }: TileProps
       onMouseLeave={() => setOverlayVisible(false)}
       onTouchStart={() => setOverlayVisible(true)}
       onTouchEnd={() => setTimeout(() => setOverlayVisible(false), 1200)}
-      aria-label={`${item.placeName} — ${item.dishName}`}
+      aria-label={`${item.placeName} - ${item.dishName}`}
     >
       {/* Photo */}
       {photo ? (
@@ -74,7 +74,7 @@ function MosaicTile({ item, rank, displayRank, locationMode = false }: TileProps
         <div className="absolute inset-0 flex items-center justify-center text-4xl opacity-20">🍽️</div>
       )}
 
-      {/* Permanent dark gradient at bottom — always visible info */}
+      {/* Permanent dark gradient at bottom - always visible info */}
       <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/75 to-transparent pointer-events-none" />
 
       {/* Permanent bottom info strip */}
@@ -105,7 +105,7 @@ function MosaicTile({ item, rank, displayRank, locationMode = false }: TileProps
         ) : null}
       </div>
 
-      {/* Hover / tap overlay — additional info */}
+      {/* Hover / tap overlay - additional info */}
       <div className={`absolute inset-0 transition-opacity duration-200 pointer-events-none ${overlayVisible ? 'opacity-100' : 'opacity-0'}`}>
         <div className="absolute inset-0 bg-[#1f355d]/60" />
         <div className="absolute inset-0 flex flex-col justify-between p-3 sm:p-4">
@@ -137,7 +137,7 @@ function MosaicTile({ item, rank, displayRank, locationMode = false }: TileProps
         </div>
       </div>
 
-      {/* Rank badge — always visible, top-left */}
+      {/* Rank badge - always visible, top-left */}
       {rank <= 3 && (
         <div className="absolute top-2 left-2">
           <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 shadow ${

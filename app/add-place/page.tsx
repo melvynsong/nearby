@@ -248,7 +248,7 @@ function AddPlaceInner() {
     })
 
     if (mode === 'create') {
-      // Guard: URL had an editPlaceId that failed UUID validation — strip it
+      // Guard: URL had an editPlaceId that failed UUID validation - strip it
       const rawId = typeof window !== 'undefined'
         ? new URLSearchParams(window.location.search).get('editPlaceId')
         : null
@@ -442,7 +442,7 @@ function AddPlaceInner() {
           setCustomDish('')
           // Use confidence=1 so the dish renders in the confirmed "high confidence"
           // display branch rather than the low-confidence empty input branch.
-          // This is intentional: in edit mode there is no fresh AI analysis —
+          // This is intentional: in edit mode there is no fresh AI analysis -
           // the loaded category IS the confirmed answer.
           setAiResult({ ...emptyAiResult, dish: dishName, confidence: 1 })
         }
@@ -461,7 +461,7 @@ function AddPlaceInner() {
             setImageTransform(savedTransform)
             setIsTransformCustomized(JSON.stringify(savedTransform) !== JSON.stringify(DEF))
           } catch {
-            // non-fatal — transform stays default
+            // non-fatal - transform stays default
           }
         }
 
@@ -561,7 +561,7 @@ function AddPlaceInner() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPlace?.google_place_id])
 
-  // ── Handle file pick — with HEIC conversion
+  // ── Handle file pick - with HEIC conversion
   const handleFilePicked = useCallback(async (file: File | null) => {
     if (!file) return
 
@@ -858,7 +858,7 @@ function AddPlaceInner() {
               </div>
             )}
 
-            {/* Hidden file inputs — HEIC/HEIF accepted explicitly */}
+            {/* Hidden file inputs - HEIC/HEIF accepted explicitly */}
             <input
               ref={cameraInputRef}
               type="file"
@@ -937,7 +937,7 @@ function AddPlaceInner() {
 
               {flowState === 'analysis_success' && (
                 <>
-                  {/* High confidence — auto-selected, show with edit option */}
+                  {/* High confidence - auto-selected, show with edit option */}
                   {isHighConf && !editingDish && (
                     <>
                       <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-1">We think this is</p>
@@ -956,7 +956,7 @@ function AddPlaceInner() {
                     </>
                   )}
 
-                  {/* Medium confidence — ranked chips for quick confirmation */}
+                  {/* Medium confidence - ranked chips for quick confirmation */}
                   {!isHighConf && isMediumConf && !editingDish && (
                     <>
                       <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-3">What is this dish?</p>
@@ -993,7 +993,7 @@ function AddPlaceInner() {
                     </>
                   )}
 
-                  {/* Low confidence — ranked chips + manual entry */}
+                  {/* Low confidence - ranked chips + manual entry */}
                   {!isHighConf && !isMediumConf && !editingDish && (
                     <>
                       <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-3">Help us choose the closest dish</p>
@@ -1032,7 +1032,7 @@ function AddPlaceInner() {
                     </>
                   )}
 
-                  {/* Edit mode — overrides high-confidence auto-select */}
+                  {/* Edit mode - overrides high-confidence auto-select */}
                   {editingDish && (
                     <>
                       <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-3">Edit dish</p>

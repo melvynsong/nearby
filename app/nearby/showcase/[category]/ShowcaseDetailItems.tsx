@@ -19,17 +19,18 @@ export default async function ShowcaseDetailItems({ category }: { category: stri
     if (typeof console !== 'undefined') {
       console.log('[ShowcaseDetailItems.tsx] Error or no data', { error, data });
     }
-    return <div className="text-red-400">Failed to load showcase items.</div>;
+    return <div className="text-red-400">{require('@/lib/ui-messages').UIMessages.errorLoad}</div>;
   }
   if (!data || data.length === 0) {
     if (typeof console !== 'undefined') {
       console.log('[ShowcaseDetailItems.tsx] No data for category', { category });
     }
+    const { UIMessages } = require('@/lib/ui-messages');
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <div className="text-4xl mb-3">🍽️</div>
-        <div className="text-lg font-bold text-neutral-500 mb-2">No places found for this category yet.</div>
-        <div className="text-base text-neutral-400 mb-4">Be the first to recommend a spot for this showcase!</div>
+        <div className="text-lg font-bold text-neutral-500 mb-2">{UIMessages.emptyShowcase}</div>
+        <div className="text-base text-neutral-400 mb-4">{UIMessages.emptyNoShowcases}</div>
       </div>
     );
   }

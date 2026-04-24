@@ -3,7 +3,7 @@
 import BrandMark from '@/components/BrandMark'
 
 interface AppHeaderProps {
-  /** Right-side slot — pass logout button, user name, etc. */
+  /** Right-side slot - pass logout button, user name, etc. */
   right?: React.ReactNode
 }
 

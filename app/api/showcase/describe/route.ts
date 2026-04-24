@@ -14,7 +14,7 @@ type DescribeItem = {
 const SYSTEM_PROMPT = `You are a food writer for a premium Singapore food guide.
 Write short, sensory, appetizing descriptions of specific dishes at specific hawker stalls or restaurants.
 Focus on: texture, aroma, broth depth, sauce balance, key ingredients, and what makes this place stand out.
-Be honest — do not fabricate unknown facts. Do not use generic praise words.
+Be honest - do not fabricate unknown facts. Do not use generic praise words.
 Each description must be 1-3 sentences only. Never use the word "delicious" or "amazing".`
 
 export async function POST(req: NextRequest) {
@@ -79,7 +79,7 @@ ${prompt}`
       const raw = JSON.parse(content.match(/\{[\s\S]*\}/)?.[0] ?? '{}')
       parsed = raw.descriptions ?? raw
     } catch {
-      // Non-fatal — return empty descriptions
+      // Non-fatal - return empty descriptions
     }
 
     // Map from numeric key back to placeId

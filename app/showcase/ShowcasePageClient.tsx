@@ -1,6 +1,7 @@
 
 "use client";
 import ShowcaseDetailItemsAccordion from '@/components/showcase/ShowcaseDetailItemsAccordion';
+import { UIMessages } from '@/lib/ui-messages';
 
 // The canonical showcase list route is /nearby/showcase. Avoid duplicating 'nearby' in path construction.
 import React, { useState, useMemo, useEffect } from 'react';
@@ -114,9 +115,9 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
           <span className="text-neutral-400 font-semibold">Showcases</span>
         </nav>
         {/* Title & Subtitle */}
-        <h1 className="text-2xl md:text-3xl font-extrabold text-neutral-900 leading-tight mb-1">Discover Food Showcases</h1>
+        <h1 className="text-2xl md:text-3xl font-extrabold text-neutral-900 leading-tight mb-1">{UIMessages.showcaseSeeMore}</h1>
         <div className="text-base text-neutral-600 mb-4 max-w-xl">
-          Browse curated dish collections based on places people actually love, revisit, and recommend.
+          {UIMessages.emptyNoPublicShowcases}
         </div>
         {/* Search input */}
         <div className="mb-2">
@@ -150,7 +151,7 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
         <section className="pb-16 space-y-4 mt-4">
           {!filtered.length && (
             <div className="rounded-2xl border border-neutral-200 bg-white px-5 py-6 text-sm text-neutral-400">
-              No showcases found. Try a different search or pill.
+              {UIMessages.emptyNoShowcases}
             </div>
           )}
 
@@ -195,13 +196,13 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
         {/* Footer CTA */}
         <section className="border-t border-neutral-200 px-5 py-8 text-center mt-8">
           <p className="text-xs text-neutral-400">
-            Want your favourite spot in the next showcase?
+            {UIMessages.showcaseNothingHere}
           </p>
           <Link
             href={withBasePath('/')}
             className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-neutral-500 underline decoration-dotted hover:text-neutral-700 transition-colors"
           >
-            Join Nearby
+            {UIMessages.groupSettingsLoading}
           </Link>
         </section>
       </div>

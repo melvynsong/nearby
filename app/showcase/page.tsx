@@ -4,7 +4,7 @@ import { getServerSupabaseClient } from '@/lib/server-supabase';
 
 export const metadata = {
   title: 'Nearby Food Showcases',
-  description: 'Curated Singapore food showcases — top dishes loved by the community.',
+  description: 'Curated Singapore food showcases - top dishes loved by the community.',
 };
 
 export default async function Page() {

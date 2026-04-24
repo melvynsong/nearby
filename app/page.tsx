@@ -277,7 +277,7 @@ export default function Home() {
             Discover good places nearby, together.
           </h1>
           <p className="mt-3 text-sm text-[#677088] leading-relaxed">
-            Nearby helps you find, save, and share useful places around you — from food spots to meetup ideas and local finds. Build groups, add places, and make it easier for everyone to decide where to go next.
+            Nearby helps you find, save, and share useful places around you - from food spots to meetup ideas and local finds. Build groups, add places, and make it easier for everyone to decide where to go next.
           </p>
         </div>
 

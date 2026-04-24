@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+import { UIMessages } from '@/lib/ui-messages';
 const DEFAULT_MESSAGES = [
-  { icon: '🍳', get: () => 'Chef is plating this for you...' },
+  { icon: '🍳', get: () => UIMessages.loadingGeneric },
   { icon: '🔥', get: () => 'Bringing out the wok hei...' },
   { icon: '🍜', get: () => 'Simmering the broth...' },
   { icon: '🥢', get: () => 'Picking the best bites nearby...' },
   { icon: '🍽️', get: () => 'Setting the table...' },
   { icon: '🌶️', get: () => 'Adding a little extra flavour...' },
   { icon: '👨‍🍳', get: () => 'Chef is cooking something good...' },
-  { icon: '⭐', get: () => 'Gathering the crowd favourites...' },
+  { icon: '⭐', get: () => UIMessages.showcaseCrowdFavourites },
   { icon: '📍', get: () => 'Finding good places near you...' },
   { icon: '🫶', get: () => 'Curating spots people really love...' },
 ];

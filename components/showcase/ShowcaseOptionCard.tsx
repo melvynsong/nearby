@@ -3,7 +3,7 @@
 
 import React from 'react';
 
-// Serializable subset of ShowcaseConfig — safe to pass from Server → Client
+// Serializable subset of ShowcaseConfig - safe to pass from Server → Client
 export type ShowcaseCardProps = {
 	key: string;
 	title: string;

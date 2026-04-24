@@ -115,7 +115,7 @@ export default function JoinGroupPage() {
       console.log('[Nearby][JoinGroup] post-join passcode check:', { resolvedUserId, hasPasscode })
 
       if (!hasPasscode) {
-        console.log('[Nearby][JoinGroup] passcode not set — redirecting to setup')
+        console.log('[Nearby][JoinGroup] passcode not set - redirecting to setup')
         router.push(withBasePath('/settings?setup=passcode'))
       } else {
         router.push(withBasePath('/nearby'))

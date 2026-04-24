@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
         if (newCat?.id) {
           categoryId = newCat.id
         } else if (catErr) {
-          // Possible race condition — try select again
+          // Possible race condition - try select again
           const { data: raceCat } = await db
             .from('food_categories')
             .select('id')
@@ -246,7 +246,7 @@ export async function POST(request: NextRequest) {
 
       if (updateErr) {
         console.error('[Nearby][API][Save] Photo url update error:', updateErr)
-        // non-fatal — place was created, continue
+        // non-fatal - place was created, continue
       }
     }
 
@@ -324,7 +324,7 @@ export async function POST(request: NextRequest) {
       if (analysisEventId) {
         const savedPhotoUrl = (() => {
           // Retrieve the latest photo URL we just uploaded (last in the array)
-          return null // photo URL retrieved async below — handled in confirm call
+          return null // photo URL retrieved async below - handled in confirm call
         })()
         void confirmDishSelection({
           analysisEventId,

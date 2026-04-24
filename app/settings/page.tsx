@@ -461,19 +461,19 @@ function GroupCard({
           {detail.loadState === 'loading' && (
             <div className="flex items-center gap-2.5 px-5 py-6">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#e5e7eb] border-t-[#1f355d]" />
-              <p className="text-sm text-neutral-400">Gathering your food kakis…</p>
+              <p className="text-sm text-neutral-400">{require('@/lib/ui-messages').UIMessages.loadingGroupSettings}</p>
             </div>
           )}
 
           {detail.loadState === 'error' && (
             <div className="px-5 py-5">
-              <p className="text-sm text-rose-600">Could not load group settings.</p>
+              <p className="text-sm text-rose-600">{require('@/lib/ui-messages').UIMessages.groupSettingsError}</p>
               <button
                 type="button"
                 onClick={() => { setDetail((d) => ({ ...d, loadState: 'idle' })); void loadDetails() }}
                 className="mt-2 text-xs underline text-rose-500 hover:text-rose-700"
               >
-                Try again
+                {require('@/lib/ui-messages').UIMessages.errorGeneric}
               </button>
             </div>
           )}
@@ -966,13 +966,13 @@ function SettingsPage() {
         {loading ? (
           <div className="mt-10 flex items-center gap-2.5">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#e5e7eb] border-t-[#1f355d]" />
-            <p className="text-sm text-neutral-400">Loading settings…</p>
+            <p className="text-sm text-neutral-400">{require('@/lib/ui-messages').UIMessages.loadingGroupSettings}</p>
           </div>
         ) : loadError ? (
           <div className="mt-6">
             <ErrorState
-              title="Something did not go through"
-              message="We could not load your settings just now. Please try again."
+              title={require('@/lib/ui-messages').UIMessages.errorGeneric}
+              message={require('@/lib/ui-messages').UIMessages.errorGroupSettings}
               onPrimary={() => void loadSettings()}
               secondaryLabel="Go Back"
               onSecondary={() => router.push(withBasePath('/nearby'))}

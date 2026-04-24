@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Nearby – Discover good places nearby, together.",
+  title: "Nearby - Discover good places nearby, together.",
   description: "Nearby helps you find, save, and share useful places around you - from food spots to meetup ideas and local finds.",
   icons: {
     icon: withBasePath('/favicon.ico'),

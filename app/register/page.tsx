@@ -193,7 +193,7 @@ export default function Register() {
         phone4: upserted.phone_last4 ?? last4,
         phone: upserted.phone_number ?? ph,
       }))
-      // Personal passcode is not set yet – force setup before continuing.
+      // Personal passcode is not set yet - force setup before continuing.
       localStorage.removeItem('nearby_passcode_set')
       setDone(true)
     } catch (err) {
@@ -214,7 +214,7 @@ export default function Register() {
             <span className="text-2xl">✓</span>
           </div>
           <p className="text-xl font-bold text-neutral-900">You&apos;re in!</p>
-          <p className="mt-2 text-sm text-neutral-500">Account created. Set a personal passcode to continue — you'll use it to log in to Nearby.</p>
+          <p className="mt-2 text-sm text-neutral-500">Account created. Set a personal passcode to continue - you'll use it to log in to Nearby.</p>
           <button
             onClick={() => router.push(withBasePath('/settings?setup=passcode'))}
             className="mt-6 w-full rounded-xl bg-[#1f355d] hover:bg-[#162746] px-4 py-3 text-sm font-semibold text-white transition-colors"

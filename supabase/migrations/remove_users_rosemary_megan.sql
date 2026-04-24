@@ -90,7 +90,7 @@ BEGIN
 
 
   -- ----------------------------------------------------------
-  -- 2f. place_categories — indirectly owned via places
+  -- 2f. place_categories - indirectly owned via places
   --     Places saved exclusively by these members are removed.
   --     Shared places (saved by others too) are left intact.
   -- ----------------------------------------------------------
@@ -111,7 +111,7 @@ BEGIN
   );
 
   -- ----------------------------------------------------------
-  -- 2g. places — only those exclusively added by these members
+  -- 2g. places - only those exclusively added by these members
   -- ----------------------------------------------------------
   DELETE FROM public.places
   WHERE id IN (
@@ -150,7 +150,7 @@ BEGIN
   WHERE id IN (SELECT unnest(target_member_ids));
 
   -- ----------------------------------------------------------
-  -- 2j. users  (root record — cascades group_memberships,
+  -- 2j. users  (root record - cascades group_memberships,
   --             group_user_preferences, group_invites via FK)
   -- ----------------------------------------------------------
   DELETE FROM public.users

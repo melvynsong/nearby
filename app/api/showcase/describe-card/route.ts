@@ -87,7 +87,7 @@ ${prompt}`
       const raw = JSON.parse(content.match(/\{[\s\S]*\}/)?.[0] ?? '{}')
       parsed = raw.descriptions ?? raw
     } catch {
-      // Non-fatal — return empty descriptions
+      // Non-fatal - return empty descriptions
     }
 
     // Map from numeric key back to category name

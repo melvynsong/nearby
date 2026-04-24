@@ -35,7 +35,7 @@ const EMPTY_RESPONSE: FoodSuggestResponse = {
 
 const SYSTEM_PROMPT = `You are a highly accurate food recognition assistant specialized in Singapore hawker food, Asian dishes, and commonly photographed local meals.
 
-Your task is to identify the most likely actual dish name — not a generic cuisine category.
+Your task is to identify the most likely actual dish name - not a generic cuisine category.
 
 Use these signals:
 1. The uploaded food image (primary signal)
@@ -58,7 +58,7 @@ Preferred specific dish names include: Bak Chor Mee, Wanton Mee, Fishball Noodle
 
 When confidence is uncertain, return multiple ranked options with explanation.
 
-Return ONLY valid JSON — no markdown, no text outside the JSON object.`
+Return ONLY valid JSON - no markdown, no text outside the JSON object.`
 
 function buildUserPrompt(params: {
   placeName: string | null
@@ -328,7 +328,7 @@ export async function POST(req: NextRequest) {
           const chars = m.visual_characteristics && typeof m.visual_characteristics === 'object'
             ? Object.values(m.visual_characteristics).join(', ')
             : ''
-          return `${m.canonical_dish_name}: confirmed ${m.confirmed_count}x${chars ? ` — visual cues: ${chars}` : ''}`
+          return `${m.canonical_dish_name}: confirmed ${m.confirmed_count}x${chars ? ` - visual cues: ${chars}` : ''}`
         })
         .join(' | ')
     : ''

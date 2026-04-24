@@ -3,14 +3,15 @@ import React, { useEffect, useState, useCallback } from "react";
 import { getShowcaseItemsForCategory } from "@/app/nearby/showcase/[category]/ShowcaseDetailItems.client";
 import { attachDistances, ShowcaseItem } from "@/lib/showcase-utils";
 import { mapUrl } from '@/lib/nearby-helpers';
+import { UIMessages } from '@/lib/ui-messages';
 
 interface ShowcaseDetailItemsAccordionProps {
   categoryId: string;
 }
 
 const sortModes = [
-  { key: "top", label: "Top Rated" },
-  { key: "near", label: "Nearest to Me" },
+  { key: "top", label: UIMessages.showcaseCrowdFavourites },
+  { key: "near", label: UIMessages.showcaseNearbyYou },
 ];
 
 export default function ShowcaseDetailItemsAccordion({ categoryId }: ShowcaseDetailItemsAccordionProps) {
@@ -20,12 +21,12 @@ export default function ShowcaseDetailItemsAccordion({ categoryId }: ShowcaseDet
   const [sortMode, setSortMode] = useState("top");
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationDenied, setLocationDenied] = useState(false);
-  // Fun local messages for location error
+  // Fun local messages for location error (centralized, dash replaced)
   const locationMessages = [
-    "🍜 Wok hei still warming up — showing you the top-rated spots first.",
-    "😅 Don’t get hangry — here are the crowd favourites for now.",
-    "📍 Can’t find where you are, but don’t worry — these are the best spots around.",
-    "😏 GPS blur like sotong today — but these top-rated spots confirm solid."
+    UIMessages.locationWokHei,
+    "😅 Don't get hangry - here are the crowd favourites for now.",
+    UIMessages.locationCantFind,
+    UIMessages.locationBlurSotong
   ];
   // Pick a random message on each denial
   const [locationMsgIdx, setLocationMsgIdx] = useState(() => Math.floor(Math.random() * locationMessages.length));
@@ -42,7 +43,7 @@ export default function ShowcaseDetailItemsAccordion({ categoryId }: ShowcaseDet
         console.log("[ShowcaseDetailItemsAccordion] fetched items:", result.length);
       })
       .catch((err) => {
-        setError("Failed to load showcase items.");
+        setError(UIMessages.errorLoad);
         setLoading(false);
         console.error("[ShowcaseDetailItemsAccordion] fetch error:", err);
       });
@@ -118,10 +119,10 @@ export default function ShowcaseDetailItemsAccordion({ categoryId }: ShowcaseDet
           </button>
         </div>
       )}
-      {loading && <div className="py-8 text-center text-neutral-400">Loading...</div>}
+      {loading && <div className="py-8 text-center text-neutral-400">{UIMessages.loadingShowcase}</div>}
       {error && <div className="py-8 text-center text-red-500">{error}</div>}
       {!loading && !error && !displayItems.length && (
-        <div className="py-8 text-center text-neutral-400">No places found for this showcase.</div>
+        <div className="py-8 text-center text-neutral-400">{UIMessages.emptyShowcase}</div>
       )}
       {!loading && !error && displayItems.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-7 mt-2">

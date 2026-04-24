@@ -863,7 +863,7 @@ export default function NearbyHome() {
               <div className="mt-4 rounded-xl border border-[#d9e6ff] bg-[#f2f6ff] p-4 text-left">
                 <p className="text-xs font-semibold text-[#1f355d] mb-1.5">💡 Not sure where to start?</p>
                 <p className="text-sm text-[#364158] leading-relaxed">
-                  Why not start by adding your favourite food spot nearby — a hawker stall, a café, or a hidden gem only your group knows about?
+                  Why not start by adding your favourite food spot nearby - a hawker stall, a café, or a hidden gem only your group knows about?
                 </p>
                 <button
                   onClick={() => router.push(withBasePath('/add-place'))}
@@ -886,7 +886,7 @@ export default function NearbyHome() {
             return (
               <div key={place.place_id} className="relative rounded-2xl bg-white border border-neutral-200 overflow-hidden shadow-sm">
 
-                {/* Subtle trash icon — only for own places */}
+                {/* Subtle trash icon - only for own places */}
                 {isOwnPlace && (
                   <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
                     <button

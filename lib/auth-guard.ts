@@ -93,7 +93,7 @@ export async function resolveOnboardingState(): Promise<OnboardingState> {
   }
 
   if (!resolvedUserId) {
-    console.warn('[Nearby][AuthGuard] no userId resolved — user is not signed in or registered')
+    console.warn('[Nearby][AuthGuard] no userId resolved - user is not signed in or registered')
     return base
   }
 

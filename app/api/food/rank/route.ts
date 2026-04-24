@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     // Resolve internal place UUID
     const internalPlaceId = await getInternalPlaceId(googlePlaceId)
     if (!internalPlaceId) {
-      // Place not in our DB yet — no stats to apply, return original order
+      // Place not in our DB yet - no stats to apply, return original order
       return NextResponse.json({ rankedSuggestions: suggestions })
     }
 
