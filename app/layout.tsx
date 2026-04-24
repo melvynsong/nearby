@@ -18,7 +18,10 @@ export const metadata: Metadata = {
   title: "Nearby - Discover good places nearby, together.",
   description: "Nearby helps you find, save, and share useful places around you - from food spots to meetup ideas and local finds.",
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.png", type: "image/png", sizes: "256x256" },
+    ],
     shortcut: "/favicon.ico",
   },
 };
