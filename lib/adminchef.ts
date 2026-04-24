@@ -5,12 +5,14 @@ import { redirect } from "next/navigation";
 export async function isCurrentUserAdminChef() {
   const supabase = getServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
+  console.log('[AdminChef] current user id exists?', !!user);
   if (!user) return false;
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, phone_number, phone_last4, full_name")
     .eq("id", user.id)
     .single();
+  console.log('[AdminChef] profile phone_last4', profile?.phone_last4);
   if (!profile) return false;
   const { data: admin } = await supabase
     .from("adminchef_access")
@@ -19,7 +21,10 @@ export async function isCurrentUserAdminChef() {
     .eq("phone_last4", profile.phone_last4)
     .eq("is_active", true)
     .single();
-  return !!admin;
+  console.log('[AdminChef] access row found?', !!admin);
+  const allowed = !!admin;
+  console.log('[AdminChef] allowed', allowed);
+  return allowed;
 }
 
 // Throws/redirects if not an active AdminChef, returns admin info if allowed

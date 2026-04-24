@@ -932,16 +932,7 @@ function SettingsPage() {
 
   return (
     <main className="min-h-screen bg-[#f5f6f8] pb-20">
-      <AppHeader
-        right={
-          <button
-            onClick={() => void handleLogout()}
-            className="inline-flex h-8 items-center rounded-full border border-[#ead6d2] bg-[#fff8f7] px-3 text-xs font-medium text-[#8a4a43] hover:bg-[#fdeeee]"
-          >
-            Log out
-          </button>
-        }
-      />
+
 
       <div className="nearby-shell pt-5">
         {/* Back navigation */}
