@@ -20,6 +20,15 @@ export default function ShowcaseDetailItemsAccordion({ categoryId }: ShowcaseDet
   const [sortMode, setSortMode] = useState("top");
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationDenied, setLocationDenied] = useState(false);
+  // Fun local messages for location error
+  const locationMessages = [
+    "🍜 Wok hei still warming up — showing you the top-rated spots first.",
+    "😅 Don’t get hangry — here are the crowd favourites for now.",
+    "📍 Can’t find where you are, but don’t worry — these are the best spots around.",
+    "😏 GPS blur like sotong today — but these top-rated spots confirm solid."
+  ];
+  // Pick a random message on each denial
+  const [locationMsgIdx, setLocationMsgIdx] = useState(() => Math.floor(Math.random() * locationMessages.length));
 
   // Fetch showcase items
   useEffect(() => {
@@ -54,9 +63,10 @@ export default function ShowcaseDetailItemsAccordion({ categoryId }: ShowcaseDet
         console.log("[ShowcaseDetailItemsAccordion] got user location");
       },
       (err) => {
-        setError("Location permission denied.");
         setUserLocation(null);
         setLocationDenied(true);
+        setLocationMsgIdx(Math.floor(Math.random() * locationMessages.length));
+        setError(null); // Don't show technical error
         console.warn("[ShowcaseDetailItemsAccordion] location error:", err);
       },
       { enableHighAccuracy: true, timeout: 10000 }
@@ -94,7 +104,19 @@ export default function ShowcaseDetailItemsAccordion({ categoryId }: ShowcaseDet
         ))}
       </div>
       {locationDenied && sortMode === "near" && (
-        <div className="text-xs text-red-500 mb-2">Location permission denied. Showing Top Rated instead.</div>
+        <div className="text-xs text-amber-700 bg-amber-50 rounded px-3 py-2 mb-2 flex items-center gap-2">
+          <span>{locationMessages[locationMsgIdx]}</span>
+          <button
+            className="ml-2 underline text-amber-700 hover:text-yellow-700 text-xs font-semibold"
+            onClick={() => {
+              setLocationDenied(false);
+              setTimeout(() => requestLocation(), 100);
+            }}
+            type="button"
+          >
+            Try again
+          </button>
+        </div>
       )}
       {loading && <div className="py-8 text-center text-neutral-400">Loading...</div>}
       {error && <div className="py-8 text-center text-red-500">{error}</div>}

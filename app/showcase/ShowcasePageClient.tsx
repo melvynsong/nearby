@@ -177,8 +177,9 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
                 />
                 {/* Inline expanded section */}
                 <div
-                  className={`transition-all duration-500 overflow-hidden ${isExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
+                  className={`transition-all duration-500 ${isExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                   aria-expanded={isExpanded}
+                  style={{ height: isExpanded ? 'auto' : 0 }}
                 >
                   {isExpanded ? (
                     <div className="mt-2">
