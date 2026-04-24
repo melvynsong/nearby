@@ -461,7 +461,7 @@ function GroupCard({
           {detail.loadState === 'loading' && (
             <div className="flex items-center gap-2.5 px-5 py-6">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#e5e7eb] border-t-[#1f355d]" />
-              <p className="text-sm text-neutral-400">Loading group settings…</p>
+              <p className="text-sm text-neutral-400">Gathering your food kakis…</p>
             </div>
           )}
 
