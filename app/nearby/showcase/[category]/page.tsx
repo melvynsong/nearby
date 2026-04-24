@@ -9,7 +9,7 @@ import { getShowcaseConfigByKey, getAvailableShowcases } from '@/lib/showcase-co
 import { getServerSupabaseClient } from '@/lib/server-supabase';
 import { slugToDisplayLabel, normalizeCategoryKey, categoryToSlug, categoryToDisplayLabel } from '@/lib/category-utils';
 import ShowcaseDetailItems from './ShowcaseDetailItems';
-import AppHeader from '@/components/AppHeader';
+// import AppHeader from '@/components/AppHeader';
 import Link from 'next/link';
 import { Metadata } from 'next';
 
@@ -73,7 +73,7 @@ export default async function ShowcaseDetailPage({ params }: { params: { categor
   const displayTitle = config.title;
   return (
     <main className="min-h-screen bg-[#f5f6f8] pb-24">
-      <AppHeader />
+      {/* Header is now only rendered globally. */}
       <div className="nearby-shell mx-auto w-full max-w-3xl px-4 pt-6">
         {/* Breadcrumb */}
         <nav className="mb-3 flex items-center text-xs text-neutral-400 font-medium gap-1 whitespace-nowrap overflow-x-auto" aria-label="Breadcrumb">

@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import AppHeader from '@/components/AppHeader'
+// import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
 import { apiPath, withBasePath } from '@/lib/base-path'
 import { markPasscodeSet } from '@/lib/auth-guard'
