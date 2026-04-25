@@ -19,14 +19,32 @@ export default function AppHeader({ forceShowPills = false }: { forceShowPills?:
         if (reg) {
           const parsed = JSON.parse(reg);
           name = parsed?.fullName || parsed?.name || null;
+          if (typeof console !== 'undefined') {
+            console.log('[AppHeader] Found userName from localStorage:', name);
+          }
+        } else {
+          if (typeof console !== 'undefined') {
+            console.log('[AppHeader] No nearby_register in localStorage');
+          }
         }
-      } catch {}
+      } catch (e) {
+        if (typeof console !== 'undefined') {
+          console.log('[AppHeader] Error parsing localStorage nearby_register:', e);
+        }
+      }
       // Fallback: try to get from Supabase session
       if (!name) {
         try {
           const { data: sessionData } = await import('@/lib/supabase').then(m => m.supabase.auth.getSession());
           name = sessionData?.session?.user?.user_metadata?.full_name || null;
-        } catch {}
+          if (typeof console !== 'undefined') {
+            console.log('[AppHeader] Found userName from Supabase session:', name);
+          }
+        } catch (e) {
+          if (typeof console !== 'undefined') {
+            console.log('[AppHeader] Error getting Supabase session:', e);
+          }
+        }
       }
       setUserName(name);
     }

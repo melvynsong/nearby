@@ -5,7 +5,7 @@ import AppFooter from "@/components/AppFooter";
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <AppHeader />
+      <AppHeader forceShowPills={true} />
       <div className="flex-1">{children}</div>
       <AppFooter />
     </>
