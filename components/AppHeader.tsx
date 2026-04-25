@@ -9,53 +9,76 @@ import { useRouter } from 'next/navigation';
 
 export default function AppHeader({ forceShowPills = false }: { forceShowPills?: boolean } = {}) {
   const [userName, setUserName] = useState<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     async function resolveName() {
       let name = null;
+      let loggedIn = false;
       try {
-        const reg = typeof window !== 'undefined' ? localStorage.getItem('nearby_register') : null;
-        if (reg) {
-          const parsed = JSON.parse(reg);
-          name = parsed?.fullName || parsed?.name || null;
+        const { data: sessionData } = await import('@/lib/supabase').then(m => m.supabase.auth.getSession());
+        const session = sessionData?.session;
+        if (session && session.user) {
+          name = session.user.user_metadata?.full_name || null;
+          loggedIn = true;
           if (typeof console !== 'undefined') {
-            console.log('[AppHeader] Found userName from localStorage:', name);
+            console.log('[AppHeader] Found userName from Supabase session:', name);
           }
         } else {
           if (typeof console !== 'undefined') {
-            console.log('[AppHeader] No nearby_register in localStorage');
+            console.log('[AppHeader] No valid Supabase session');
           }
         }
       } catch (e) {
         if (typeof console !== 'undefined') {
-          console.log('[AppHeader] Error parsing localStorage nearby_register:', e);
+          console.log('[AppHeader] Error getting Supabase session:', e);
         }
       }
-      // Fallback: try to get from Supabase session
-      if (!name) {
+      // Fallback: try to get from localStorage if not logged in
+      if (!loggedIn) {
         try {
-          const { data: sessionData } = await import('@/lib/supabase').then(m => m.supabase.auth.getSession());
-          name = sessionData?.session?.user?.user_metadata?.full_name || null;
-          if (typeof console !== 'undefined') {
-            console.log('[AppHeader] Found userName from Supabase session:', name);
+          const reg = typeof window !== 'undefined' ? localStorage.getItem('nearby_register') : null;
+          if (reg) {
+            const parsed = JSON.parse(reg);
+            name = parsed?.fullName || parsed?.name || null;
+            loggedIn = !!name;
+            if (typeof console !== 'undefined') {
+              console.log('[AppHeader] Found userName from localStorage:', name);
+            }
+          } else {
+            if (typeof console !== 'undefined') {
+              console.log('[AppHeader] No nearby_register in localStorage');
+            }
           }
         } catch (e) {
           if (typeof console !== 'undefined') {
-            console.log('[AppHeader] Error getting Supabase session:', e);
+            console.log('[AppHeader] Error parsing localStorage nearby_register:', e);
           }
         }
       }
       setUserName(name);
+      setIsLoggedIn(loggedIn);
     }
     resolveName();
   }, []);
 
-  function handleLogout() {
+  async function handleLogout() {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('nearby_session');
       localStorage.removeItem('nearby_register');
       localStorage.removeItem('nearby_passcode_set');
+      try {
+        const { supabase } = await import('@/lib/supabase');
+        await supabase.auth.signOut();
+        if (typeof console !== 'undefined') {
+          console.log('[AppHeader] Signed out from Supabase');
+        }
+      } catch (e) {
+        if (typeof console !== 'undefined') {
+          console.log('[AppHeader] Error signing out from Supabase:', e);
+        }
+      }
       window.location.replace('https://www.togostory.com/nearby/');
     }
   }
@@ -65,10 +88,10 @@ export default function AppHeader({ forceShowPills = false }: { forceShowPills?:
       <div className="nearby-shell h-16 flex items-center justify-between gap-3">
         <BrandMark size="header" />
         <div className="flex items-center gap-3 shrink-0">
-          {userName && (
+          {isLoggedIn && userName && (
             <span className="text-xs text-neutral-700 font-medium mr-1">You are logged in as <span className="font-bold">{userName}</span></span>
           )}
-          {(userName || forceShowPills) && (
+          {isLoggedIn && userName && (
             <>
               <button
                 type="button"
