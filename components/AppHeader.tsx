@@ -3,7 +3,8 @@
 import BrandMark from '@/components/BrandMark';
 import { useEffect, useState } from 'react';
 
-export default function AppHeader() {
+
+export default function AppHeader({ forceShowPills = false }: { forceShowPills?: boolean } = {}) {
   const [userName, setUserName] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,7 +37,7 @@ export default function AppHeader() {
           {userName && (
             <span className="text-xs text-neutral-700 font-medium mr-1">You are logged in as <span className="font-bold">{userName}</span></span>
           )}
-          {userName && (
+          {(userName || forceShowPills) && (
             <>
               <button
                 type="button"
