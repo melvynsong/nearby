@@ -39,6 +39,7 @@ export default function AppHeader({ forceShowPills = false }: { forceShowPills?:
       }
       // Fallback: try to get from localStorage if not logged in
       if (!loggedIn) {
+        // Try nearby_register first (legacy)
         try {
           const reg = typeof window !== 'undefined' ? localStorage.getItem('nearby_register') : null;
           if (reg) {
@@ -46,16 +47,30 @@ export default function AppHeader({ forceShowPills = false }: { forceShowPills?:
             name = parsed?.fullName || parsed?.name || null;
             loggedIn = !!name;
             if (typeof console !== 'undefined') {
-              console.log('[AppHeader] Found userName from localStorage:', name);
-            }
-          } else {
-            if (typeof console !== 'undefined') {
-              console.log('[AppHeader] No nearby_register in localStorage');
+              console.log('[AppHeader] Found userName from localStorage nearby_register:', name);
             }
           }
         } catch (e) {
           if (typeof console !== 'undefined') {
             console.log('[AppHeader] Error parsing localStorage nearby_register:', e);
+          }
+        }
+        // If still no name, try nearby_session (newer)
+        if (!name) {
+          try {
+            const sessionRaw = typeof window !== 'undefined' ? localStorage.getItem('nearby_session') : null;
+            if (sessionRaw) {
+              const sessionParsed = JSON.parse(sessionRaw);
+              name = sessionParsed?.memberName || sessionParsed?.userName || null;
+              loggedIn = !!name;
+              if (typeof console !== 'undefined') {
+                console.log('[AppHeader] Found userName from localStorage nearby_session:', name);
+              }
+            }
+          } catch (e) {
+            if (typeof console !== 'undefined') {
+              console.log('[AppHeader] Error parsing localStorage nearby_session:', e);
+            }
           }
         }
       }

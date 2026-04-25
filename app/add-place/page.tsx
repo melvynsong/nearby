@@ -1,112 +1,128 @@
-'use client'
+"use client";
 
-import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
-import { DishAIConfirmationModal } from '@/components/DishAIConfirmationModal'
-import { useRouter, useSearchParams } from 'next/navigation'
-import ErrorState from '@/components/ErrorState'
-import TransformedImage from '@/components/TransformedImage'
-import PhotoAdjustSheet from '@/components/PhotoAdjustSheet'
-import {
-  DEFAULT_IMAGE_TRANSFORM,
-  type ImageTransform,
-  isAdjustmentRecommended,
-} from '@/lib/image-transform'
-import { apiPath, withBasePath } from '@/lib/base-path'
-import { supabase } from '@/lib/supabase'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type FlowState =
-  | 'idle'
-  | 'converting_image'
-  | 'analyzing'
-  | 'analysis_success'
-  | 'analysis_error'
-
-type Session = {
-  memberId: string
-  memberName: string
-  groupId: string
-  groupName: string
-}
-
-type Prediction = {
-  placeId: string
-  text: string
-  secondaryText: string
-  distanceMeters: number | null
-  rating: number | null
-}
-
-type PlaceDetails = {
-  google_place_id: string
-  name: string
-  formatted_address: string | null
-  lat: number | null
-  lng: number | null
-  rating: number | null
-  user_rating_count: number | null
-}
-
-type Category = {
-  id: string
-  name: string
-}
-
-type DishSignals = {
-  image_score: number
-  place_score: number
-  visual_memory_score: number
-}
-
-// ─── Main Component ──────────────────────────────────────────────────────────
-
-function AddPlaceInner() {
-  // All hooks/state must be inside the function
-  // ...existing state, refs, and logic here...
-  // For brevity, insert your logic, hooks, and handlers here as in your original file
-
-  // Example minimal state for demonstration:
-  const [showDishSavedToast, setShowDishSavedToast] = useState(false)
-  const [showAdjustSheet, setShowAdjustSheet] = useState(false)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [imageTransform, setImageTransform] = useState<ImageTransform>(DEFAULT_IMAGE_TRANSFORM)
-  const [isTransformCustomized, setIsTransformCustomized] = useState(false)
-
-  // ...all your other hooks, handlers, and logic...
-
-  return (
-    <main className="min-h-screen bg-[#f5f6f8] pb-28" style={{ overflowX: 'hidden', maxWidth: '100vw' }}>
-      {/* ...all your JSX and UI logic here, exactly as in your working version... */}
-
-      {/* Example: */}
-      {showDishSavedToast && (
-        <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white shadow-lg">
-          Dish saved. Future suggestions will improve.
-        </div>
-      )}
-
-      <PhotoAdjustSheet
-        isOpen={showAdjustSheet}
-        src={previewUrl}
-        initialTransform={imageTransform}
-        onCancel={() => setShowAdjustSheet(false)}
-        onDone={(nextTransform) => {
-          setImageTransform(nextTransform)
-          setIsTransformCustomized(true)
-          setShowAdjustSheet(false)
-        }}
-      />
-    </main>
-  )
-}
-
-// ─── Suspense wrapper (required by Next.js for useSearchParams) ───────────────
+import { useState, useRef } from 'react';
+import PhotoAdjustSheet from '@/components/PhotoAdjustSheet';
+import ErrorState from '@/components/ErrorState';
+// Import other components and helpers as needed
+// For HEIC conversion, use heic2any if available
+// import heic2any from 'heic2any';
 
 export default function AddPlace() {
+  // State for photo upload
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [dishSuggestions, setDishSuggestions] = useState<string[]>([]);
+  const [selectedDish, setSelectedDish] = useState<string | null>(null);
+  const [confidence, setConfidence] = useState<number | null>(null);
+  const [showAdjustSheet, setShowAdjustSheet] = useState(false);
+  // ...other state for place, groups, etc.
+
+  // File input ref
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+
+  // Handle photo upload with HEIC conversion
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    let processedFile = file;
+    // HEIC conversion (mocked, add real logic if heic2any is available)
+    if (file.type === 'image/heic' || file.name.endsWith('.heic') || file.name.endsWith('.HEIC')) {
+      // TODO: Use heic2any for real conversion
+      setAiError('HEIC conversion not implemented in this demo. Please use JPEG/PNG.');
+      return;
+    }
+    setPhoto(processedFile);
+    setPhotoUrl(URL.createObjectURL(processedFile));
+    // Trigger AI scan
+    runAiScan(processedFile);
+  };
+
+  // Mock AI scan logic
+  const runAiScan = async (file: File) => {
+    setAiLoading(true);
+    setAiError(null);
+    // Simulate API call
+    setTimeout(() => {
+      setDishSuggestions(["Laksa", "Chicken Rice", "Char Kway Teow"]);
+      setConfidence(0.92);
+      setSelectedDish("Laksa");
+      setAiLoading(false);
+    }, 1500);
+  };
+
+  // Handle dish selection
+  const handleDishSelect = (dish: string) => {
+    setSelectedDish(dish);
+  };
+
+  // UI rendering
   return (
-    <Suspense>
-      <AddPlaceInner />
-    </Suspense>
-  )
+    <main className="min-h-screen bg-[#f5f6f8] pb-28 flex flex-col items-center">
+      <div className="w-full max-w-lg bg-white rounded-xl shadow p-6 mt-8">
+        <h2 className="text-xl font-bold mb-4">Add a Place</h2>
+        {/* Photo upload */}
+        <div className="mb-4">
+          <input
+            type="file"
+            accept="image/*,.heic,.heif"
+            ref={fileInputRef}
+            onChange={handlePhotoChange}
+            className="hidden"
+          />
+          <button
+            className="bg-blue-600 text-white px-4 py-2 rounded"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {photo ? "Change Photo" : "Upload Photo"}
+          </button>
+          {photoUrl && (
+            <div className="mt-4">
+              <img src={photoUrl} alt="Preview" className="rounded-lg max-h-60" />
+              <button
+                className="mt-2 text-blue-600 underline"
+                onClick={() => setShowAdjustSheet(true)}
+              >
+                Adjust Photo
+              </button>
+            </div>
+          )}
+        </div>
+        {/* AI scan and suggestions */}
+        {aiLoading && <p>Analyzing photo...</p>}
+        {aiError && <ErrorState title="AI Error" message={aiError} onPrimary={() => setAiError(null)} />}
+        {dishSuggestions.length > 0 && (
+          <div className="mb-4">
+            <p className="font-semibold">AI Suggestions:</p>
+            <div className="flex gap-2 mt-2 flex-wrap">
+              {dishSuggestions.map((dish) => (
+                <button
+                  key={dish}
+                  className={`px-3 py-1 rounded-full border ${selectedDish === dish ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
+                  onClick={() => handleDishSelect(dish)}
+                >
+                  {dish}
+                </button>
+              ))}
+            </div>
+            {confidence !== null && (
+              <p className="mt-2 text-sm text-gray-500">Confidence: {(confidence * 100).toFixed(1)}%</p>
+            )}
+          </div>
+        )}
+        {/* TODO: Place autocomplete, group selection, note, save button, etc. */}
+      </div>
+      {/* Photo adjustment sheet */}
+      <PhotoAdjustSheet
+        isOpen={showAdjustSheet}
+        src={photoUrl}
+        initialTransform={{ scale: 1, offsetX: 0, offsetY: 0 }}
+        onCancel={() => setShowAdjustSheet(false)}
+        onDone={() => setShowAdjustSheet(false)}
+      />
+    </main>
+  );
 }
