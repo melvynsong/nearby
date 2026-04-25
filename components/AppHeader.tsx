@@ -8,16 +8,25 @@ export default function AppHeader({ forceShowPills = false }: { forceShowPills?:
   const [userName, setUserName] = useState<string | null>(null);
 
   useEffect(() => {
-    // Try to get user name from localStorage (set during onboarding/profile)
-    let name = null;
-    try {
-      const reg = typeof window !== 'undefined' ? localStorage.getItem('nearby_register') : null;
-      if (reg) {
-        const parsed = JSON.parse(reg);
-        name = parsed?.fullName || parsed?.name || null;
+    async function resolveName() {
+      let name = null;
+      try {
+        const reg = typeof window !== 'undefined' ? localStorage.getItem('nearby_register') : null;
+        if (reg) {
+          const parsed = JSON.parse(reg);
+          name = parsed?.fullName || parsed?.name || null;
+        }
+      } catch {}
+      // Fallback: try to get from Supabase session
+      if (!name) {
+        try {
+          const { data: sessionData } = await import('@/lib/supabase').then(m => m.supabase.auth.getSession());
+          name = sessionData?.session?.user?.user_metadata?.full_name || null;
+        } catch {}
       }
-    } catch {}
-    setUserName(name);
+      setUserName(name);
+    }
+    resolveName();
   }, []);
 
   function handleLogout() {
