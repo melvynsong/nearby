@@ -13,11 +13,13 @@ export default function AppHeader({ forceShowPills = false }: { forceShowPills?:
   const router = useRouter();
 
   useEffect(() => {
+    let unsub: any = null;
     async function resolveName() {
       let name = null;
       let loggedIn = false;
       try {
-        const { data: sessionData } = await import('@/lib/supabase').then(m => m.supabase.auth.getSession());
+        const { supabase } = await import('@/lib/supabase');
+        const { data: sessionData } = await supabase.auth.getSession();
         const session = sessionData?.session;
         if (session && session.user) {
           name = session.user.user_metadata?.full_name || null;
@@ -61,6 +63,14 @@ export default function AppHeader({ forceShowPills = false }: { forceShowPills?:
       setIsLoggedIn(loggedIn);
     }
     resolveName();
+    import('@/lib/supabase').then(({ supabase }) => {
+      unsub = supabase.auth.onAuthStateChange(() => {
+        resolveName();
+      });
+    });
+    return () => {
+      if (unsub && typeof unsub.unsubscribe === 'function') unsub.unsubscribe();
+    };
   }, []);
 
   async function handleLogout() {
