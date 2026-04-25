@@ -73,6 +73,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, message: 'Could not update membership status.' }, { status: 500 })
     }
 
+    // After updating membership, if rejected, check if user has any memberships left
+    if (decision === 'rejected') {
+      // Find the user_id for this membership
+      const { data: membershipRow } = await supabase
+        .from('group_memberships')
+        .select('user_id')
+        .eq('id', membershipId)
+        .maybeSingle();
+      const userId = membershipRow?.user_id;
+      if (userId) {
+        // Check if user has any other active memberships
+        const { data: remainingMemberships } = await supabase
+          .from('group_memberships')
+          .select('id')
+          .eq('user_id', userId)
+          .neq('status', 'rejected');
+        if (!remainingMemberships || remainingMemberships.length === 0) {
+          // Remove user from users table
+          await supabase.from('users').delete().eq('id', userId);
+        }
+      }
+    }
+
     console.log('[Membership]', {
       event: 'status_updated',
       membershipId,

@@ -15,7 +15,8 @@ export default function UsersAdminList({ searchParams }: { searchParams?: { q?: 
       const q = searchParams?.q || "";
       let query = supabase
         .from("users")
-        .select("id, full_name, onboarded")
+        .select("id, full_name, onboarded, phone_number")
+        .in("phone_number", ["97365221", "97100453", "97815336"])
         .order("created_at", { ascending: false });
       if (q) query = query.ilike("full_name", `%${q}%`);
       const { data: usersData } = await query.limit(50);
