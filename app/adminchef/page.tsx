@@ -20,14 +20,23 @@ export default function AdminChefPage() {
           if (reg) {
             const parsed = JSON.parse(reg);
             userId = parsed?.userId || null;
+            if (typeof console !== 'undefined') {
+              console.log('[AdminChef] userId from localStorage:', userId);
+            }
           }
         }
         // If not found, try Supabase session
         if (!userId) {
           const { data: sessionData } = await supabase.auth.getSession();
           userId = sessionData?.session?.user?.id || null;
+          if (typeof console !== 'undefined') {
+            console.log('[AdminChef] userId from Supabase session:', userId);
+          }
         }
         if (!userId) {
+          if (typeof console !== 'undefined') {
+            console.log('[AdminChef] No userId found, denying access');
+          }
           setHasAccess(false);
           setChecking(false);
           return;
@@ -40,9 +49,15 @@ export default function AdminChefPage() {
           .eq('admin_role', 'chef')
           .eq('is_active', true)
           .maybeSingle();
+        if (typeof console !== 'undefined') {
+          console.log('[AdminChef] adminRow:', adminRow, 'error:', adminErr);
+        }
         setHasAccess(!!adminRow);
       } catch (e) {
         setError('Could not check admin access.');
+        if (typeof console !== 'undefined') {
+          console.log('[AdminChef] Exception:', e);
+        }
       } finally {
         setChecking(false);
       }
@@ -59,13 +74,20 @@ export default function AdminChefPage() {
   }
 
   if (!hasAccess) {
+    // Not a chef admin, show message and delay redirect for debug
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        window.location.href = '/nearby';
+      }, 5000); // 5 seconds delay
+    }
+
     return (
       <main className="min-h-screen flex flex-col items-center justify-center bg-[#f5f6f8] p-6">
         <div className="w-full max-w-2xl mx-auto mt-10">
           <Breadcrumb items={[{ label: "Home", href: "/" }, { label: "Chef Dashboard" }]} />
           <div className="rounded-xl bg-white p-8 shadow border text-center">
             <div className="text-2xl font-bold text-rose-700 mb-2">Access Denied</div>
-            <div className="text-gray-600">Sorry, you do not have permission to view the Chef Dashboard.</div>
+            <div className="text-gray-600">Access denied. Redirecting in 5 seconds…<br/>Check the browser console for [AdminChef] debug logs.</div>
             {error && <div className="text-xs text-gray-400 mt-2">{error}</div>}
           </div>
         </div>
@@ -77,6 +99,9 @@ export default function AdminChefPage() {
     <main className="min-h-screen flex flex-col items-center justify-center bg-[#f5f6f8] p-6">
       <div className="w-full max-w-5xl mx-auto mt-10">
         <Breadcrumb items={[{ label: "Home", href: "/" }, { label: "Chef Dashboard" }]} />
+        <div className="rounded-xl bg-green-50 border border-green-200 p-4 mb-6 text-center">
+          <span className="text-lg font-semibold text-green-700">Welcome, you are logged in as <span className="font-bold">Chef</span>.</span>
+        </div>
         <h1 className="text-3xl font-bold text-neutral-800 mb-6">Chef Dashboard</h1>
         <ChefDashboardData admin={true} />
         <div className="mt-10">

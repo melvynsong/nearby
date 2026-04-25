@@ -15,8 +15,8 @@ export default function ChefDashboardData({ admin }: { admin: any }) {
       const { count: membershipCount } = await supabase.from("group_memberships").select("id", { count: "exact", head: true });
       const { count: spotCount } = await supabase.from("places").select("id", { count: "exact", head: true });
       const { data: recentMembers } = await supabase
-        .from("profiles")
-        .select("id, full_name, phone_last4, created_at")
+        .from("users")
+        .select("id, full_name, onboarded, created_at")
         .order("created_at", { ascending: false })
         .limit(5);
       const { data: recentSpots } = await supabase
