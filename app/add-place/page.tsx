@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
+import { DishAIConfirmationModal } from '@/components/DishAIConfirmationModal'
 import { useRouter, useSearchParams } from 'next/navigation'
 import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
@@ -59,164 +60,169 @@ type DishSignals = {
   visual_memory_score: number
 }
 
-type DishSuggestion = {
-  name: string
-  confidence: number
-  why: string[]
-  signals: DishSignals
-}
-
-type AiResult = {
-  dish: string | null
-  suggestions: string[]   // dish-level names, max 5 (backward compat)
-  topSuggestions: DishSuggestion[]
-  confidence: number | null
-  reasoning: string
-  analysisEventId: string | null
-}
-
-const emptyAiResult: AiResult = {
-  dish: null,
-  suggestions: [],
-  topSuggestions: [],
-  confidence: null,
-  reasoning: '',
-  analysisEventId: null,
-}
-
-// ─── HEIC helpers ─────────────────────────────────────────────────────────────
-
-function isHeic(file: File): boolean {
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
-  return ext === 'heic' || ext === 'heif' || file.type === 'image/heic' || file.type === 'image/heif'
-}
-
-async function convertHeicToJpeg(file: File): Promise<File> {
-  // Dynamic import keeps heic2any out of the main JS bundle
-  const mod = await import('heic2any')
-  const heic2any = (mod.default ?? mod) as (opts: { blob: Blob; toType: string; quality: number }) => Promise<Blob | Blob[]>
-  const result = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 })
-  const blob = Array.isArray(result) ? result[0] : result
-  return new File([blob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' })
-}
-
-// ─── AI response normalisation ────────────────────────────────────────────────
-
-const GENERIC_BLACKLIST = new Set([
-  'western food', 'asian food', 'chinese food', 'indian food', 'malay food',
-  'chinese cuisine', 'indian cuisine', 'malay cuisine', 'asian cuisine',
-  'southeast asian food', 'mixed food', 'food', 'meal',
-])
-
-function isGeneric(name: string): boolean {
-  return GENERIC_BLACKLIST.has(name.toLowerCase().trim())
-}
-
-// ─── Mode resolution ────────────────────────────────────────────────────────
-
-function isValidUUID(id: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-}
-
-type PlacePageMode =
-  | { mode: 'create'; editPlaceId: null }
-  | { mode: 'edit'; editPlaceId: string }
-
-function resolvePlaceMode(
-  params: { get(key: string): string | null },
-): PlacePageMode {
-  const editId = params.get('editPlaceId')
-  if (editId && isValidUUID(editId)) {
-    return { mode: 'edit', editPlaceId: editId }
-  }
-  return { mode: 'create', editPlaceId: null }
-}
-
-// ─── AI response normalisation ────────────────────────────────────────────────
-
-function parseAiResponse(data: Record<string, unknown>): AiResult {
-  let confidence = typeof data.confidence === 'number' ? data.confidence : null
-  // Normalise 0-100 scale to 0-1
-  if (confidence !== null && confidence > 1) confidence = confidence / 100
-  if (confidence !== null) confidence = Math.min(1, Math.max(0, confidence))
-
-  const rawDish = typeof data.primarySuggestion === 'string' ? data.primarySuggestion.trim() : null
-  const dish = rawDish && !isGeneric(rawDish) && (confidence === null || confidence >= 0.5) ? rawDish : null
-
-  // Prefer rich top_suggestions array if present
-  const topSuggestions: DishSuggestion[] = Array.isArray(data.topSuggestions)
-    ? (data.topSuggestions as unknown[])
-        .filter((x): x is DishSuggestion => typeof x === 'object' && x !== null && typeof (x as DishSuggestion).name === 'string')
-        .filter((s) => !isGeneric(s.name))
-        .slice(0, 5)
-    : []
-
-  const rawAlts = topSuggestions.length
-    ? topSuggestions.map((s) => s.name)
-    : Array.isArray(data.alternativeSuggestions)
-    ? (data.alternativeSuggestions as unknown[])
-        .filter((x): x is string => typeof x === 'string' && x.trim().length > 0 && !isGeneric(x))
-        .slice(0, 5)
-    : []
-
-  const reasoning = typeof data.reasoningShort === 'string' ? data.reasoningShort : ''
-  const analysisEventId = typeof data.analysisEventId === 'string' ? data.analysisEventId : null
-
-  return { dish, suggestions: rawAlts, topSuggestions, confidence, reasoning, analysisEventId }
-}
-
-// ─── Component (inner) ────────────────────────────────────────────────────────
-
-function AddPlaceInner() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-
-  // ── Page mode derived from current URL (reactive across edit/create navigation)
-  const resolvedMode = resolvePlaceMode(searchParams)
-  const mode = resolvedMode.mode
-  const editPlaceId = resolvedMode.editPlaceId
-
-  const [session] = useState<Session | null>(() => {
-    if (typeof window === 'undefined') return null
-    const raw = localStorage.getItem('nearby_session')
-    if (!raw) return null
-    try {
-      return JSON.parse(raw) as Session
-    } catch {
-      return null
-    }
-  })
-
-  // ── Image / Analysis state
-  const [flowState, setFlowState] = useState<FlowState>('idle')
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [imageTransform, setImageTransform] = useState<ImageTransform>(DEFAULT_IMAGE_TRANSFORM)
-  const [isTransformCustomized, setIsTransformCustomized] = useState(false)
-  const [showAdjustSheet, setShowAdjustSheet] = useState(false)
-  const [previewImageSize, setPreviewImageSize] = useState<{ width: number; height: number } | null>(null)
-  const [aiResult, setAiResult] = useState<AiResult>(emptyAiResult)
-  const [aiError, setAiError] = useState('')
-
-  // ── Dish selection
-  const [selectedDish, setSelectedDish] = useState<string | null>(null)
-  const [editingDish, setEditingDish] = useState(false)
-  const [customDish, setCustomDish] = useState('')
-
-  // ── Location
-  const [query, setQuery] = useState('')
-  const [predictions, setPredictions] = useState<Prediction[]>([])
-  const [searching, setSearching] = useState(false)
-  const [selectedPlace, setSelectedPlace] = useState<PlaceDetails | null>(null)
-  const [loadingDetails, setLoadingDetails] = useState(false)
-  const [showDropdown, setShowDropdown] = useState(false)
-
-  // ── Categories (group's saved list, for fallback)
-  const [categories, setCategories] = useState<Category[]>([])
-
-  // ── Note & save
-  const [note, setNote] = useState('')
-  const [saving, setSaving] = useState(false)
+          {/* ── Dish section ───────────────────────────────────────── */}
+          {(flowState === 'analysis_success' || flowState === 'analysis_error') && (
+            <section className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
+              {/* Error state */}
+              {flowState === 'analysis_error' && (
+                <>
+                  <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-2">Dish</p>
+                  <ErrorState
+                    title="Something did not go through"
+                    message={aiError || 'We could not analyse this right now. Try again or adjust your input.'}
+                    onPrimary={() => {
+                      if (selectedFile) void runAnalysis(selectedFile)
+                    }}
+                    secondaryLabel="Continue manually"
+                    onSecondary={() => {
+                      setAiError('')
+                      setFlowState('analysis_success')
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={customDish}
+                    onChange={(e) => { setCustomDish(e.target.value); setSelectedDish(null) }}
+                    placeholder="Type dish name"
+                    className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-neutral-600 min-w-0 box-border"
+                  />
+                </>
+              )}
+              {/* AI Modal loading message */}
+              {flowState === 'analysis_success' && aiModalLoading && (
+                <div className="my-4 text-center text-blue-600 animate-pulse">
+                  {aiModalMessage || 'Mixing up your feedback... 🍲'}
+                </div>
+              )}
+              {/* High confidence */}
+              {flowState === 'analysis_success' && isHighConf && !editingDish && (
+                <>
+                  <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-1">We think this is</p>
+                  <div className="flex items-center justify-between gap-3 min-w-0">
+                    <p className="text-xl font-semibold text-neutral-900 min-w-0 break-words">{selectedDish}</p>
+                    <button
+                      onClick={() => setEditingDish(true)}
+                      className="shrink-0 text-xs text-neutral-400 underline hover:text-neutral-700"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  {aiResult.reasoning && (
+                    <p className="mt-1 text-xs text-neutral-400 break-words">{aiResult.reasoning}</p>
+                  )}
+                </>
+              )}
+              {/* Medium confidence */}
+              {flowState === 'analysis_success' && !isHighConf && isMediumConf && !editingDish && (
+                <>
+                  <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-3">What is this dish?</p>
+                  <div className="flex flex-wrap gap-2">
+                    {chips.map((name, idx) => (
+                      <button
+                        key={`chip-med-${idx}`}
+                        onClick={() => { setSelectedDish(name); setCustomDish('') }}
+                        className={`relative rounded-full px-3 py-1.5 text-sm font-medium transition-all min-w-0 ${
+                          selectedDish === name
+                            ? 'bg-[#1f355d] text-white'
+                            : idx === 0
+                            ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                        }`}
+                      >
+                        {idx === 0 && selectedDish !== name && (
+                          <span className="mr-1 text-[10px] font-semibold text-emerald-600">Most likely</span>
+                        )}
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[11px] text-neutral-400">Suggested from photo, similar dishes, and place history.</p>
+                  {!selectedDish && (
+                    <input
+                      type="text"
+                      value={customDish}
+                      onChange={(e) => { setCustomDish(e.target.value); setSelectedDish(null) }}
+                      placeholder="Something else?"
+                      className="mt-3 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-neutral-600 min-w-0 box-border"
+                    />
+                  )}
+                </>
+              )}
+              {/* Low confidence */}
+              {flowState === 'analysis_success' && !isHighConf && !isMediumConf && !editingDish && (
+                <>
+                  <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-3">Help us choose the closest dish</p>
+                  {chips.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {chips.map((name, idx) => (
+                        <button
+                          key={`chip-low-${idx}`}
+                          onClick={() => { setSelectedDish(name); setCustomDish('') }}
+                          className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all min-w-0 ${
+                            selectedDish === name
+                              ? 'bg-[#1f355d] text-white'
+                              : idx === 0
+                              ? 'border border-neutral-300 bg-neutral-50 text-neutral-700 hover:bg-neutral-100'
+                              : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                          }`}
+                        >
+                          {idx === 0 && selectedDish !== name && chips.length > 1 && (
+                            <span className="mr-1 text-[10px] font-semibold text-neutral-500">Most likely</span>
+                          )}
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {chips.length > 0 && (
+                    <p className="mb-3 text-[11px] text-neutral-400">Suggested from photo, similar dishes, and place history.</p>
+                  )}
+                  <input
+                    type="text"
+                    value={customDish}
+                    onChange={(e) => { setCustomDish(e.target.value); setSelectedDish(null) }}
+                    placeholder="Type dish name"
+                    className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-neutral-600 min-w-0 box-border"
+                  />
+                </>
+              )}
+              {/* Edit mode */}
+              {flowState === 'analysis_success' && editingDish && (
+                <>
+                  <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-3">Edit dish</p>
+                  {chips.length > 0 && (
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {chips.map((name, idx) => (
+                        <button
+                          key={`chip-edit-${idx}`}
+                          onClick={() => { setSelectedDish(name); setCustomDish(''); setEditingDish(false) }}
+                          className="rounded-full px-3 py-1.5 text-sm font-medium bg-neutral-100 text-neutral-700 hover:bg-neutral-200 transition-all min-w-0"
+                        >
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <input
+                    type="text"
+                    defaultValue={customDish || selectedDish || ''}
+                    onChange={(e) => { setCustomDish(e.target.value); setSelectedDish(null) }}
+                    placeholder="Dish name"
+                    autoFocus
+                    className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-neutral-600 min-w-0 box-border"
+                  />
+                  {customDish.trim() && (
+                    <button
+                      onClick={() => { setSelectedDish(customDish.trim()); setCustomDish(''); setEditingDish(false) }}
+                      className="mt-2 text-xs text-neutral-500 underline"
+                    >
+                      Confirm
+                    </button>
+                  )}
+                </>
+              )}
+            </section>
+          )}
   const [error, setError] = useState('')
   const [showSaveErrorCard, setShowSaveErrorCard] = useState(false)
   const [showDishSavedToast, setShowDishSavedToast] = useState(false)
@@ -510,13 +516,56 @@ function AddPlaceInner() {
 
       const result = parseAiResponse(data as Record<string, unknown>)
       setAiResult(result)
-
+      // Show modal for user feedback if we have a suggestion
+      if (result.dish) {
+        setShowAIModal(true)
+      }
       // Auto-select when confidence is high (≥ 0.85)
       if (result.dish && (result.confidence ?? 0) >= 0.85) {
         setSelectedDish(result.dish)
       }
-
       setFlowState('analysis_success')
+      // ── Handle AI Modal confirm/correct
+      const handleAIModalConfirm = async (dishName: string, wasConfirmed: boolean) => {
+        setAIModalLoading(true)
+        setAIModalMessage(wasConfirmed
+          ? 'Cooking up your confirmation... 🍳'
+          : 'Stirring in your correction... 🥄')
+        setAIModalError('')
+        try {
+          // POST to /api/dish-analysis/submit
+          const payload = {
+            user_id: session?.memberId || null,
+            place_id: selectedPlace?.google_place_id || null,
+            uploaded_photo_url: previewUrl || null,
+            ai_raw_result: aiResult,
+            suggested_dishes: aiResult.suggestions,
+            confidence: Math.round((aiResult.confidence ?? 0) * 100),
+            final_selected_dish: dishName,
+            was_confirmed: wasConfirmed,
+          }
+          const res = await fetch('/api/dish-analysis/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+          if (!res.ok) {
+            throw new Error('The kitchen is too busy! Please try again.')
+          }
+          setAIModalMessage('Dish feedback served! 🍽️')
+          setTimeout(() => {
+            setShowAIModal(false)
+            setAIModalLoading(false)
+            setAIModalMessage('')
+            setAIModalError('')
+            setSelectedDish(dishName)
+            setCustomDish(wasConfirmed ? '' : dishName)
+          }, 900)
+        } catch (err: any) {
+          setAIModalError(err.message || 'Something went wrong in the kitchen!')
+          setAIModalLoading(false)
+        }
+      }
     } catch (error) {
       console.error('[Nearby][AI] Analysis request failed:', error)
       setAiError('We could not analyse this right now. Try again or adjust your input.')
@@ -906,6 +955,17 @@ function AddPlaceInner() {
             )}
           </section>
 
+          {/* ── Dish AI Modal ───────────────────────────────────────── */}
+          {showAIModal && aiResult.dish && (
+            <DishAIConfirmationModal
+              suggestedDishName={aiResult.dish}
+              confidence={Math.round((aiResult.confidence ?? 0) * 100)}
+              photoUrl={previewUrl || undefined}
+              onConfirm={handleAIModalConfirm}
+              onClose={() => setShowAIModal(false)}
+            />
+          )}
+
           {/* ── Dish section ───────────────────────────────────────── */}
           {(flowState === 'analysis_success' || flowState === 'analysis_error') && (
             <section className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
@@ -935,139 +995,138 @@ function AddPlaceInner() {
                 </>
               )}
 
-              {flowState === 'analysis_success' && (
+              {flowState === 'analysis_success' && aiModalLoading && (
+                <div className="my-4 text-center text-blue-600 animate-pulse">
+                  {aiModalMessage || 'Mixing up your feedback... 🍲'}
+                </div>
+              )}
+              {/* High confidence - auto-selected, show with edit option */}
+              {flowState === 'analysis_success' && isHighConf && !editingDish && (
                 <>
-                  {/* High confidence - auto-selected, show with edit option */}
-                  {isHighConf && !editingDish && (
-                    <>
-                      <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-1">We think this is</p>
-                      <div className="flex items-center justify-between gap-3 min-w-0">
-                        <p className="text-xl font-semibold text-neutral-900 min-w-0 break-words">{selectedDish}</p>
-                        <button
-                          onClick={() => setEditingDish(true)}
-                          className="shrink-0 text-xs text-neutral-400 underline hover:text-neutral-700"
-                        >
-                          Edit
-                        </button>
-                      </div>
-                      {aiResult.reasoning && (
-                        <p className="mt-1 text-xs text-neutral-400 break-words">{aiResult.reasoning}</p>
-                      )}
-                    </>
-                  )}
-
-                  {/* Medium confidence - ranked chips for quick confirmation */}
-                  {!isHighConf && isMediumConf && !editingDish && (
-                    <>
-                      <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-3">What is this dish?</p>
-                      <div className="flex flex-wrap gap-2">
-                        {chips.map((name, idx) => (
-                          <button
-                            key={`chip-med-${idx}`}
-                            onClick={() => { setSelectedDish(name); setCustomDish('') }}
-                            className={`relative rounded-full px-3 py-1.5 text-sm font-medium transition-all min-w-0 ${
-                              selectedDish === name
-                                ? 'bg-[#1f355d] text-white'
-                                : idx === 0
-                                ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                                : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                            }`}
-                          >
-                            {idx === 0 && selectedDish !== name && (
-                              <span className="mr-1 text-[10px] font-semibold text-emerald-600">Most likely</span>
-                            )}
-                            {name}
-                          </button>
-                        ))}
-                      </div>
-                      <p className="mt-2 text-[11px] text-neutral-400">Suggested from photo, similar dishes, and place history.</p>
-                      {!selectedDish && (
-                        <input
-                          type="text"
-                          value={customDish}
-                          onChange={(e) => { setCustomDish(e.target.value); setSelectedDish(null) }}
-                          placeholder="Something else?"
-                          className="mt-3 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-neutral-600 min-w-0 box-border"
-                        />
-                      )}
-                    </>
-                  )}
-
-                  {/* Low confidence - ranked chips + manual entry */}
-                  {!isHighConf && !isMediumConf && !editingDish && (
-                    <>
-                      <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-3">Help us choose the closest dish</p>
-                      {chips.length > 0 && (
-                        <div className="mb-2 flex flex-wrap gap-2">
-                          {chips.map((name, idx) => (
-                            <button
-                              key={`chip-low-${idx}`}
-                              onClick={() => { setSelectedDish(name); setCustomDish('') }}
-                              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all min-w-0 ${
-                                selectedDish === name
-                                  ? 'bg-[#1f355d] text-white'
-                                  : idx === 0
-                                  ? 'border border-neutral-300 bg-neutral-50 text-neutral-700 hover:bg-neutral-100'
-                                  : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                              }`}
-                            >
-                              {idx === 0 && selectedDish !== name && chips.length > 1 && (
-                                <span className="mr-1 text-[10px] font-semibold text-neutral-500">Most likely</span>
-                              )}
-                              {name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {chips.length > 0 && (
-                        <p className="mb-3 text-[11px] text-neutral-400">Suggested from photo, similar dishes, and place history.</p>
-                      )}
-                      <input
-                        type="text"
-                        value={customDish}
-                        onChange={(e) => { setCustomDish(e.target.value); setSelectedDish(null) }}
-                        placeholder="Type dish name"
-                        className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-neutral-600 min-w-0 box-border"
-                      />
-                    </>
-                  )}
-
-                  {/* Edit mode - overrides high-confidence auto-select */}
-                  {editingDish && (
-                    <>
-                      <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-3">Edit dish</p>
-                      {chips.length > 0 && (
-                        <div className="mb-3 flex flex-wrap gap-2">
-                          {chips.map((name, idx) => (
-                            <button
-                              key={`chip-edit-${idx}`}
-                              onClick={() => { setSelectedDish(name); setCustomDish(''); setEditingDish(false) }}
-                              className="rounded-full px-3 py-1.5 text-sm font-medium bg-neutral-100 text-neutral-700 hover:bg-neutral-200 transition-all min-w-0"
-                            >
-                              {name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      <input
-                        type="text"
-                        defaultValue={customDish || selectedDish || ''}
-                        onChange={(e) => { setCustomDish(e.target.value); setSelectedDish(null) }}
-                        placeholder="Dish name"
-                        autoFocus
-                        className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-neutral-600 min-w-0 box-border"
-                      />
-                      {customDish.trim() && (
-                        <button
-                          onClick={() => { setSelectedDish(customDish.trim()); setCustomDish(''); setEditingDish(false) }}
-                          className="mt-2 text-xs text-neutral-500 underline"
-                        >
-                          Confirm
-                        </button>
-                      )}
-                    </>
+                  <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-1">We think this is</p>
+                  <div className="flex items-center justify-between gap-3 min-w-0">
+                    <p className="text-xl font-semibold text-neutral-900 min-w-0 break-words">{selectedDish}</p>
+                    <button
+                      onClick={() => setEditingDish(true)}
+                      className="shrink-0 text-xs text-neutral-400 underline hover:text-neutral-700"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  {aiResult.reasoning && (
+                    <p className="mt-1 text-xs text-neutral-400 break-words">{aiResult.reasoning}</p>
                   )}
                 </>
+              )}
+              {/* Medium confidence - ranked chips for quick confirmation */}
+              {flowState === 'analysis_success' && !isHighConf && isMediumConf && !editingDish && (
+                <>
+                  <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-3">What is this dish?</p>
+                  <div className="flex flex-wrap gap-2">
+                    {chips.map((name, idx) => (
+                      <button
+                        key={`chip-med-${idx}`}
+                        onClick={() => { setSelectedDish(name); setCustomDish('') }}
+                        className={`relative rounded-full px-3 py-1.5 text-sm font-medium transition-all min-w-0 ${
+                          selectedDish === name
+                            ? 'bg-[#1f355d] text-white'
+                            : idx === 0
+                            ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                        }`}
+                      >
+                        {idx === 0 && selectedDish !== name && (
+                          <span className="mr-1 text-[10px] font-semibold text-emerald-600">Most likely</span>
+                        )}
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[11px] text-neutral-400">Suggested from photo, similar dishes, and place history.</p>
+                  {!selectedDish && (
+                    <input
+                      type="text"
+                      value={customDish}
+                      onChange={(e) => { setCustomDish(e.target.value); setSelectedDish(null) }}
+                      placeholder="Something else?"
+                      className="mt-3 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-neutral-600 min-w-0 box-border"
+                    />
+                  )}
+                </>
+              )}
+              {/* Low confidence - ranked chips + manual entry */}
+              {flowState === 'analysis_success' && !isHighConf && !isMediumConf && !editingDish && (
+                <>
+                  <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-3">Help us choose the closest dish</p>
+                  {chips.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {chips.map((name, idx) => (
+                        <button
+                          key={`chip-low-${idx}`}
+                          onClick={() => { setSelectedDish(name); setCustomDish('') }}
+                          className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all min-w-0 ${
+                            selectedDish === name
+                              ? 'bg-[#1f355d] text-white'
+                              : idx === 0
+                              ? 'border border-neutral-300 bg-neutral-50 text-neutral-700 hover:bg-neutral-100'
+                              : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                          }`}
+                        >
+                          {idx === 0 && selectedDish !== name && chips.length > 1 && (
+                            <span className="mr-1 text-[10px] font-semibold text-neutral-500">Most likely</span>
+                          )}
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {chips.length > 0 && (
+                    <p className="mb-3 text-[11px] text-neutral-400">Suggested from photo, similar dishes, and place history.</p>
+                  )}
+                  <input
+                    type="text"
+                    value={customDish}
+                    onChange={(e) => { setCustomDish(e.target.value); setSelectedDish(null) }}
+                    placeholder="Type dish name"
+                    className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-neutral-600 min-w-0 box-border"
+                  />
+                </>
+              )}
+              {/* Edit mode - overrides high-confidence auto-select */}
+              {flowState === 'analysis_success' && editingDish && (
+                <>
+                  <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 mb-3">Edit dish</p>
+                  {chips.length > 0 && (
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {chips.map((name, idx) => (
+                        <button
+                          key={`chip-edit-${idx}`}
+                          onClick={() => { setSelectedDish(name); setCustomDish(''); setEditingDish(false) }}
+                          className="rounded-full px-3 py-1.5 text-sm font-medium bg-neutral-100 text-neutral-700 hover:bg-neutral-200 transition-all min-w-0"
+                        >
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <input
+                    type="text"
+                    defaultValue={customDish || selectedDish || ''}
+                    onChange={(e) => { setCustomDish(e.target.value); setSelectedDish(null) }}
+                    placeholder="Dish name"
+                    autoFocus
+                    className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-neutral-600 min-w-0 box-border"
+                  />
+                  {customDish.trim() && (
+                    <button
+                      onClick={() => { setSelectedDish(customDish.trim()); setCustomDish(''); setEditingDish(false) }}
+                      className="mt-2 text-xs text-neutral-500 underline"
+                    >
+                      Confirm
+                    </button>
+                  )}
+                </>
+              )}
               )}
             </section>
           )}
@@ -1235,7 +1294,11 @@ function AddPlaceInner() {
               disabled={saving || loadingDetails || isBlocking}
               className="w-full rounded-xl bg-[#1f355d] hover:bg-[#162746] px-4 py-3 text-sm font-semibold text-white transition-all duration-300 disabled:opacity-40"
             >
-              {saving ? 'Saving...' : mode === 'edit' ? 'Save changes' : 'Save food spot'}
+              {saving
+                ? 'Saving your delicious spot... 😋'
+                : mode === 'edit'
+                ? 'Save changes'
+                : 'Save food spot'}
             </button>
           )}
 
