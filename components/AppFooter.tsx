@@ -7,6 +7,7 @@ import { withBasePath } from '@/lib/base-path';
 export default function AppFooter() {
   const [isChef, setIsChef] = useState(false);
   useEffect(() => {
+    let unsub: any;
     async function checkChef() {
       let userId = null;
       if (typeof window !== 'undefined') {
@@ -34,8 +35,16 @@ export default function AppFooter() {
       setIsChef(!!adminRow);
     }
     checkChef();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typeof window !== 'undefined' && window.localStorage.getItem('nearby_register')]);
+    // Listen for Supabase auth state changes
+    if (supabase && supabase.auth && supabase.auth.onAuthStateChange) {
+      unsub = supabase.auth.onAuthStateChange(() => {
+        checkChef();
+      });
+    }
+    return () => {
+      if (unsub && typeof unsub.unsubscribe === 'function') unsub.unsubscribe();
+    };
+  }, []);
 
   return (
     <footer className="border-t border-[#e6e9ef] bg-[#f5f6f8] py-6">
