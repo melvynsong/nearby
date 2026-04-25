@@ -1,25 +1,24 @@
-'use client'
+"use client";
 
-import BrandMark from '@/components/BrandMark'
-import Link from 'next/link'
+import BrandMark from '@/components/BrandMark';
+import { useEffect, useState } from 'react';
 
-interface AppHeaderProps {
-  /** Right-side slot - pass logout button, user name, etc. */
-  right?: React.ReactNode
-}
+export default function AppHeader() {
+  const [userName, setUserName] = useState<string | null>(null);
 
-export default function AppHeader({ right }: AppHeaderProps) {
-  return (
-    <header className="sticky top-0 z-30 border-b border-[#e6e9ef] bg-white/92 backdrop-blur-sm">
-      <div className="nearby-shell h-16 flex items-center justify-between gap-3">
-        <BrandMark size="header" />
-        <div className="flex items-center gap-3 shrink-0">
-          {right}
-        </div>
-      </div>
-    </header>
-  )
-  // Logout handler (client only)
+  useEffect(() => {
+    // Try to get user name from localStorage (set during onboarding/profile)
+    let name = null;
+    try {
+      const reg = typeof window !== 'undefined' ? localStorage.getItem('nearby_register') : null;
+      if (reg) {
+        const parsed = JSON.parse(reg);
+        name = parsed?.fullName || parsed?.name || null;
+      }
+    } catch {}
+    setUserName(name);
+  }, []);
+
   function handleLogout() {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('nearby_session');
@@ -28,11 +27,15 @@ export default function AppHeader({ right }: AppHeaderProps) {
       window.location.replace('/');
     }
   }
+
   return (
     <header className="sticky top-0 z-30 border-b border-[#e6e9ef] bg-white/92 backdrop-blur-sm">
       <div className="nearby-shell h-16 flex items-center justify-between gap-3">
         <BrandMark size="header" />
         <div className="flex items-center gap-3 shrink-0">
+          {userName && (
+            <span className="text-xs text-neutral-700 font-medium mr-1">You are logged in as <span className="font-bold">{userName}</span></span>
+          )}
           <button
             onClick={handleLogout}
             className="inline-flex h-8 items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50/70 px-3 text-xs font-medium text-rose-700 transition-all hover:bg-rose-100 active:scale-[0.98]"
@@ -44,9 +47,8 @@ export default function AppHeader({ right }: AppHeaderProps) {
             </svg>
             <span>Logout</span>
           </button>
-          {right}
         </div>
       </div>
     </header>
-  )
+  );
 }
