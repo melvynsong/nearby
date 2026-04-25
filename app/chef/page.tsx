@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import ChefDashboardData from "@/app/nearby/adminchef/ChefDashboardData";
 import UsersAdminList from "@/app/nearby/adminchef/users/UsersAdminList";
 import Breadcrumb from "@/components/Breadcrumb";
-import AppHeader from "@/components/AppHeader";
 import { supabase } from "@/lib/supabase";
 
 
@@ -54,52 +53,41 @@ export default function ChefPage() {
     checkAccess();
   }, []);
 
-  // Header always at the top
-  const header = <AppHeader forceShowPills />;
 
   if (checking) {
     return (
-      <>
-        {header}
-        <main className="min-h-screen flex items-center justify-center bg-[#f5f6f8]">
-          <div className="text-lg text-gray-500">Checking access…</div>
-        </main>
-      </>
+      <main className="min-h-screen flex items-center justify-center bg-[#f5f6f8]">
+        <div className="text-lg text-gray-500">Checking access…</div>
+      </main>
     );
   }
 
   if (!hasAccess) {
     return (
-      <>
-        {header}
-        <main className="min-h-screen flex flex-col items-center justify-center bg-[#f5f6f8] p-6">
-          <div className="w-full max-w-2xl mx-auto mt-10">
-            <Breadcrumb items={[{ label: "Home", href: "/" }, { label: "Chef Dashboard" }]} />
-            <div className="rounded-xl bg-white p-8 shadow border text-center">
-              <div className="text-2xl font-bold text-rose-700 mb-2">Access Denied</div>
-              <div className="text-gray-600">Sorry, you do not have permission to view the Chef Dashboard.</div>
-              {error && <div className="text-xs text-gray-400 mt-2">{error}</div>}
-            </div>
+      <main className="min-h-screen flex flex-col items-center justify-center bg-[#f5f6f8] p-6">
+        <div className="w-full max-w-2xl mx-auto mt-10">
+          <Breadcrumb items={[{ label: "Home", href: "/" }, { label: "Chef Dashboard" }]} />
+          <div className="rounded-xl bg-white p-8 shadow border text-center">
+            <div className="text-2xl font-bold text-rose-700 mb-2">Access Denied</div>
+            <div className="text-gray-600">Sorry, you do not have permission to view the Chef Dashboard.</div>
+            {error && <div className="text-xs text-gray-400 mt-2">{error}</div>}
           </div>
-        </main>
-      </>
+        </div>
+      </main>
     );
   }
 
   return (
-    <>
-      {header}
-      <main className="min-h-screen flex flex-col items-center justify-center bg-[#f5f6f8] p-6">
-        <div className="w-full max-w-5xl mx-auto mt-10">
-          <Breadcrumb items={[{ label: "Home", href: "/" }, { label: "Chef Dashboard" }]} />
-          <h1 className="text-3xl font-bold text-neutral-800 mb-6">Chef Dashboard</h1>
-          <ChefDashboardData admin={true} />
-          <div className="mt-10">
-            <h2 className="text-2xl font-semibold mb-4">All Users</h2>
-            <UsersAdminList />
-          </div>
+    <main className="min-h-screen flex flex-col items-center justify-center bg-[#f5f6f8] p-6">
+      <div className="w-full max-w-5xl mx-auto mt-10">
+        <Breadcrumb items={[{ label: "Home", href: "/" }, { label: "Chef Dashboard" }]} />
+        <h1 className="text-3xl font-bold text-neutral-800 mb-6">Chef Dashboard</h1>
+        <ChefDashboardData admin={true} />
+        <div className="mt-10">
+          <h2 className="text-2xl font-semibold mb-4">All Users</h2>
+          <UsersAdminList />
         </div>
-      </main>
-    </>
+      </div>
+    </main>
   );
 }
