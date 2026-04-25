@@ -1,11 +1,15 @@
 "use client";
 
+
 import BrandMark from '@/components/BrandMark';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+
 
 
 export default function AppHeader({ forceShowPills = false }: { forceShowPills?: boolean } = {}) {
   const [userName, setUserName] = useState<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     async function resolveName() {
@@ -51,7 +55,7 @@ export default function AppHeader({ forceShowPills = false }: { forceShowPills?:
               <button
                 type="button"
                 className="inline-flex h-8 items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50/80 px-3 text-xs font-medium text-blue-700 transition-all hover:bg-blue-100 active:scale-[0.98]"
-                onClick={() => window.location.assign('https://www.togostory.com/nearby/settings')}
+                onClick={() => router.push('/nearby/settings/')}
               >
                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
                   <circle cx="12" cy="12" r="3" />
