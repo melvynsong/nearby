@@ -784,7 +784,7 @@ function AddPlaceInner() {
 
   return (
     <main className="min-h-screen bg-[#f5f6f8] pb-28" style={{ overflowX: 'hidden', maxWidth: '100vw' }}>
-      <AppHeader />
+      {/* <AppHeader /> removed to prevent double header; global header is rendered in layout */}
       <div className="nearby-shell px-0 pt-5 box-border">
 
         <button
