@@ -18,7 +18,7 @@ export default function AppFooter() {
           <button
             type="button"
             className="ml-1 rounded-full border border-green-200 bg-green-50/80 px-2 py-0.5 text-[10px] font-semibold text-green-700 uppercase tracking-wider shadow-sm hover:bg-green-100 transition min-w-[48px]"
-            onClick={() => window.open('https://www.togostory.com/chef', '_blank')}
+            onClick={() => window.location.assign('https://www.togostory.com/nearby/chef')}
           >
             Chef
           </button>

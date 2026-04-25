@@ -24,7 +24,7 @@ export default function AppHeader() {
       localStorage.removeItem('nearby_session');
       localStorage.removeItem('nearby_register');
       localStorage.removeItem('nearby_passcode_set');
-      window.location.replace('/');
+      window.location.replace('https://www.togostory.com/nearby/');
     }
   }
 
