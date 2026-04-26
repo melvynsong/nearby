@@ -229,10 +229,11 @@ function AddPlaceInner() {
 
   useEffect(() => {
     if (mode === 'create') {
-      const rawId = typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search).get('editPlaceId')
-        : null
-      if (rawId) {
+      // Strict: in create mode the URL must have NO query string.
+      // The +Add button always navigates to /add-place clean. If anything
+      // (editPlaceId, stale params, share params) is present, strip it.
+      const hasQuery = typeof window !== 'undefined' && window.location.search.length > 0
+      if (hasQuery) {
         router.replace(withBasePath('/add-place'))
       } else {
         setPreviewUrl((prev) => {

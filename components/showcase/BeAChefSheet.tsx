@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { apiPath } from '@/lib/base-path'
 
 export type BeAChefAnalysis = {
@@ -79,9 +79,6 @@ export default function BeAChefSheet({
   const [revealedMarkers, setRevealedMarkers] = useState(0)
   const [analysis, setAnalysis] = useState<BeAChefAnalysis | null>(null)
   const [errorText, setErrorText] = useState<string | null>(null)
-  const [dragY, setDragY] = useState(0)
-  const dragStartY = useRef<number | null>(null)
-  const sheetRef = useRef<HTMLDivElement | null>(null)
 
   const clues = useMemo(() => {
     if (analysis?.key_visual_clues?.length) {
@@ -108,7 +105,6 @@ export default function BeAChefSheet({
     setRevealedMarkers(0)
     setAnalysis(null)
     setErrorText(null)
-    setDragY(0)
   }, [isOpen, photoUrl])
 
   // Rotating scan messages
@@ -177,23 +173,6 @@ export default function BeAChefSheet({
     }
   }, [isOpen, photoUrl, placeName, dishHint])
 
-  // Touch swipe-to-close
-  const onTouchStart = (e: React.TouchEvent) => {
-    dragStartY.current = e.touches[0]?.clientY ?? null
-  }
-  const onTouchMove = (e: React.TouchEvent) => {
-    if (dragStartY.current == null) return
-    const delta = (e.touches[0]?.clientY ?? 0) - dragStartY.current
-    if (delta > 0) setDragY(Math.min(delta, 240))
-  }
-  const onTouchEnd = () => {
-    if (dragY > 120) {
-      onClose()
-    }
-    setDragY(0)
-    dragStartY.current = null
-  }
-
   if (!isOpen || !photoUrl) return null
 
   return (
@@ -202,31 +181,18 @@ export default function BeAChefSheet({
         type="button"
         aria-label="Close Be a Chef"
         onClick={onClose}
-        className="nearby-sheet-backdrop absolute inset-0 bg-black/50 backdrop-blur-[2px]"
+        className="nearby-sheet-backdrop absolute inset-0 bg-black/55 backdrop-blur-[2px]"
       />
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex max-h-full justify-center">
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-3">
         <section
-          ref={sheetRef}
-          className="nearby-sheet-panel pointer-events-auto flex w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-neutral-200 bg-white shadow-2xl"
+          className="beachef-popup pointer-events-auto flex w-full max-w-md flex-col overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-2xl"
           style={{
-            transform: dragY ? `translate3d(0, ${dragY}px, 0)` : undefined,
-            transition: dragStartY.current == null ? 'transform 240ms cubic-bezier(0.2,0.9,0.2,1)' : 'none',
             maxHeight: '92vh',
           }}
         >
-          {/* Drag handle (touch area for swipe-down) */}
-          <div
-            className="flex cursor-grab justify-center px-4 pt-3 pb-1 active:cursor-grabbing"
-            onTouchStart={onTouchStart}
-            onTouchMove={onTouchMove}
-            onTouchEnd={onTouchEnd}
-          >
-            <div className="h-1.5 w-10 rounded-full bg-neutral-300" />
-          </div>
-
           {/* Header row */}
-          <div className="flex items-center justify-between px-5 pb-2 pt-1">
+          <div className="flex items-center justify-between px-5 pb-2 pt-4">
             <div className="flex items-center gap-2">
               <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-neutral-900 text-white">
                 <ChefHatIcon className="h-4 w-4" />
