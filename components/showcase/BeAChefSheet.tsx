@@ -1,0 +1,427 @@
+'use client'
+
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { apiPath } from '@/lib/base-path'
+
+export type BeAChefAnalysis = {
+  dish_name: string
+  confidence: number
+  key_visual_clues: string[]
+  reasoning_summary: string
+  ingredients: string[]
+  steps: string[]
+  local_tips?: string[]
+}
+
+type Props = {
+  isOpen: boolean
+  onClose: () => void
+  photoUrl: string | null
+  placeName?: string | null
+  dishHint?: string | null
+}
+
+const MIN_SCAN_TIME_MS = 4200
+
+const SCAN_MESSAGES = [
+  'Looking at the main ingredient…',
+  'Checking noodle / rice texture…',
+  'Matching broth and sauce colour…',
+  'Comparing serving style…',
+  'Checking garnish and toppings…',
+  'Building a home-style recipe…',
+]
+
+const PLACEHOLDER_CLUES = [
+  'Main ingredient',
+  'Texture detected',
+  'Sauce / broth',
+  'Garnish',
+  'Serving style',
+]
+
+const MARKER_POSITIONS: Array<{ top: string; left: string; align: 'left' | 'right' }> = [
+  { top: '24%', left: '28%', align: 'right' },
+  { top: '40%', left: '68%', align: 'left' },
+  { top: '60%', left: '34%', align: 'right' },
+  { top: '72%', left: '70%', align: 'left' },
+  { top: '32%', left: '52%', align: 'right' },
+]
+
+function ChefHatIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M6 14a4 4 0 1 1 1.6-7.66A5 5 0 0 1 17 7a4 4 0 0 1 1 7.87" />
+      <path d="M6 14h12v4a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-4Z" />
+      <path d="M9 18v2M15 18v2" />
+    </svg>
+  )
+}
+
+export default function BeAChefSheet({
+  isOpen,
+  onClose,
+  photoUrl,
+  placeName,
+  dishHint,
+}: Props) {
+  const [phase, setPhase] = useState<'scanning' | 'results'>('scanning')
+  const [messageIdx, setMessageIdx] = useState(0)
+  const [revealedMarkers, setRevealedMarkers] = useState(0)
+  const [analysis, setAnalysis] = useState<BeAChefAnalysis | null>(null)
+  const [errorText, setErrorText] = useState<string | null>(null)
+  const [dragY, setDragY] = useState(0)
+  const dragStartY = useRef<number | null>(null)
+  const sheetRef = useRef<HTMLDivElement | null>(null)
+
+  const clues = useMemo(() => {
+    if (analysis?.key_visual_clues?.length) {
+      return analysis.key_visual_clues.slice(0, MARKER_POSITIONS.length)
+    }
+    return PLACEHOLDER_CLUES
+  }, [analysis])
+
+  // Body scroll lock
+  useEffect(() => {
+    if (!isOpen) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [isOpen])
+
+  // Reset state when opened
+  useEffect(() => {
+    if (!isOpen) return
+    setPhase('scanning')
+    setMessageIdx(0)
+    setRevealedMarkers(0)
+    setAnalysis(null)
+    setErrorText(null)
+    setDragY(0)
+  }, [isOpen, photoUrl])
+
+  // Rotating scan messages
+  useEffect(() => {
+    if (!isOpen || phase !== 'scanning') return
+    const id = setInterval(() => {
+      setMessageIdx((i) => (i + 1) % SCAN_MESSAGES.length)
+    }, 800)
+    return () => clearInterval(id)
+  }, [isOpen, phase])
+
+  // Progressive marker reveal
+  useEffect(() => {
+    if (!isOpen || phase !== 'scanning') return
+    setRevealedMarkers(0)
+    const timeouts: ReturnType<typeof setTimeout>[] = []
+    for (let i = 0; i < MARKER_POSITIONS.length; i++) {
+      timeouts.push(
+        setTimeout(() => setRevealedMarkers((v) => Math.max(v, i + 1)), 600 + i * 550),
+      )
+    }
+    return () => {
+      timeouts.forEach((t) => clearTimeout(t))
+    }
+  }, [isOpen, phase])
+
+  // Run analysis with intentional delay
+  useEffect(() => {
+    if (!isOpen || !photoUrl) return
+
+    let cancelled = false
+    const controller = new AbortController()
+    console.log('[BeAChef] Scan started')
+
+    const run = async () => {
+      try {
+        const [result] = await Promise.all([
+          fetch(apiPath('/api/be-a-chef/analyze'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ photoUrl, placeName, dishHint }),
+            signal: controller.signal,
+          })
+            .then((res) => res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`)))
+            .then((json) => json as BeAChefAnalysis),
+          new Promise((resolve) => setTimeout(resolve, MIN_SCAN_TIME_MS)),
+        ])
+
+        if (cancelled) return
+        console.log('[BeAChef] Scan completed', result)
+        setAnalysis(result)
+        setPhase('results')
+      } catch (err) {
+        if (cancelled || (err as Error).name === 'AbortError') return
+        console.error('[BeAChef] Scan failed', err)
+        setErrorText('We could not finish scanning this dish. Please try again.')
+        setPhase('results')
+      }
+    }
+
+    void run()
+
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [isOpen, photoUrl, placeName, dishHint])
+
+  // Touch swipe-to-close
+  const onTouchStart = (e: React.TouchEvent) => {
+    dragStartY.current = e.touches[0]?.clientY ?? null
+  }
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (dragStartY.current == null) return
+    const delta = (e.touches[0]?.clientY ?? 0) - dragStartY.current
+    if (delta > 0) setDragY(Math.min(delta, 240))
+  }
+  const onTouchEnd = () => {
+    if (dragY > 120) {
+      onClose()
+    }
+    setDragY(0)
+    dragStartY.current = null
+  }
+
+  if (!isOpen || !photoUrl) return null
+
+  return (
+    <div className="fixed inset-0 z-[70]">
+      <button
+        type="button"
+        aria-label="Close Be a Chef"
+        onClick={onClose}
+        className="nearby-sheet-backdrop absolute inset-0 bg-black/50 backdrop-blur-[2px]"
+      />
+
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex max-h-full justify-center">
+        <section
+          ref={sheetRef}
+          className="nearby-sheet-panel pointer-events-auto flex w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-neutral-200 bg-white shadow-2xl"
+          style={{
+            transform: dragY ? `translate3d(0, ${dragY}px, 0)` : undefined,
+            transition: dragStartY.current == null ? 'transform 240ms cubic-bezier(0.2,0.9,0.2,1)' : 'none',
+            maxHeight: '92vh',
+          }}
+        >
+          {/* Drag handle (touch area for swipe-down) */}
+          <div
+            className="flex cursor-grab justify-center px-4 pt-3 pb-1 active:cursor-grabbing"
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+          >
+            <div className="h-1.5 w-10 rounded-full bg-neutral-300" />
+          </div>
+
+          {/* Header row */}
+          <div className="flex items-center justify-between px-5 pb-2 pt-1">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-neutral-900 text-white">
+                <ChefHatIcon className="h-4 w-4" />
+              </span>
+              <div>
+                <p className="text-sm font-bold leading-tight text-neutral-900">Be a Chef</p>
+                <p className="text-[11px] leading-tight text-neutral-500">
+                  {placeName ? `From ${placeName}` : 'AI dish analysis'}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto px-4 pb-6">
+            {/* Dish image with scan overlay */}
+            <div className="relative w-full overflow-hidden rounded-2xl bg-neutral-100">
+              {/* Image keeps natural aspect ratio */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photoUrl}
+                alt="Dish"
+                className="block h-auto max-h-[60vh] w-full object-contain"
+              />
+
+              {/* Scan overlay */}
+              {phase === 'scanning' && (
+                <div className="pointer-events-none absolute inset-0">
+                  {/* Slight darken */}
+                  <div className="absolute inset-0 bg-black/15" />
+                  {/* Sweep light */}
+                  <div className="absolute inset-y-0 -left-1/3 w-1/3 beachef-sweep bg-gradient-to-r from-transparent via-white/40 to-transparent mix-blend-screen" />
+
+                  {/* Markers */}
+                  {MARKER_POSITIONS.map((pos, i) => {
+                    if (i >= revealedMarkers) return null
+                    const label = clues[i] ?? PLACEHOLDER_CLUES[i] ?? 'Detail'
+                    return (
+                      <div
+                        key={i}
+                        className="absolute beachef-fade-up"
+                        style={{ top: pos.top, left: pos.left }}
+                      >
+                        <div className="relative">
+                          <div className="beachef-marker absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-7 w-7 rounded-full border-2 border-white/90 shadow-[0_0_0_4px_rgba(255,255,255,0.18)]" />
+                          <div
+                            className="absolute top-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold text-white backdrop-blur-sm"
+                            style={
+                              pos.align === 'right'
+                                ? { left: '20px', maxWidth: '50vw' }
+                                : { right: '20px', maxWidth: '50vw' }
+                            }
+                          >
+                            {label}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Live analysis text */}
+            {phase === 'scanning' && (
+              <div className="mt-4">
+                <p className="text-sm font-semibold text-neutral-900">
+                  AI is scanning the dish clues…
+                </p>
+                <p className="mt-1 min-h-[20px] text-sm text-neutral-600 transition-opacity duration-300">
+                  {SCAN_MESSAGES[messageIdx]}
+                </p>
+                <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
+                  <div className="h-full w-1/3 bg-neutral-900/80 beachef-sweep" />
+                </div>
+              </div>
+            )}
+
+            {/* Results */}
+            {phase === 'results' && (
+              <div className="mt-4 beachef-fade-up">
+                {errorText && (
+                  <div className="mb-3 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {errorText}
+                  </div>
+                )}
+
+                {analysis && (
+                  <>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-widest text-neutral-400">
+                          Dish identified
+                        </p>
+                        <h3 className="text-xl font-extrabold leading-tight text-neutral-900">
+                          {analysis.dish_name}
+                        </h3>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">
+                        {analysis.confidence}% match
+                      </span>
+                    </div>
+
+                    {analysis.reasoning_summary && (
+                      <p className="mt-2 text-sm leading-relaxed text-neutral-600">
+                        {analysis.reasoning_summary}
+                      </p>
+                    )}
+
+                    {analysis.key_visual_clues.length > 0 && (
+                      <section className="mt-5">
+                        <p className="text-xs font-bold uppercase tracking-widest text-neutral-500">
+                          Why we think so
+                        </p>
+                        <ul className="mt-2 space-y-1.5">
+                          {analysis.key_visual_clues.map((clue, i) => (
+                            <li key={i} className="flex items-start gap-2 text-sm text-neutral-700">
+                              <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-900" />
+                              <span>{clue}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    )}
+
+                    <section className="mt-5">
+                      <p className="text-xs font-bold uppercase tracking-widest text-neutral-500">
+                        Ingredients
+                      </p>
+                      <ul className="mt-2 space-y-1.5">
+                        {analysis.ingredients.map((ing, i) => (
+                          <li
+                            key={i}
+                            className="flex items-start gap-2 text-sm text-neutral-700"
+                          >
+                            <span className="mt-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-[10px] font-bold text-neutral-500">
+                              {i + 1}
+                            </span>
+                            <span>{ing}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+
+                    <section className="mt-5">
+                      <p className="text-xs font-bold uppercase tracking-widest text-neutral-500">
+                        Steps
+                      </p>
+                      <ol className="mt-2 space-y-2">
+                        {analysis.steps.map((step, i) => (
+                          <li key={i} className="flex items-start gap-3 text-sm text-neutral-800">
+                            <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-[11px] font-bold text-white">
+                              {i + 1}
+                            </span>
+                            <span className="leading-relaxed">{step}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </section>
+
+                    {analysis.local_tips && analysis.local_tips.length > 0 && (
+                      <section className="mt-5 rounded-2xl bg-amber-50 px-4 py-3">
+                        <p className="text-xs font-bold uppercase tracking-widest text-amber-700">
+                          Local tips
+                        </p>
+                        <ul className="mt-1.5 space-y-1">
+                          {analysis.local_tips.map((tip, i) => (
+                            <li key={i} className="text-sm text-amber-900">
+                              • {tip}
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    )}
+
+                    <p className="mt-5 text-[11px] leading-relaxed text-neutral-400">
+                      Recipe is AI-generated based on visual clues. Adjust to taste.
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
+  )
+}

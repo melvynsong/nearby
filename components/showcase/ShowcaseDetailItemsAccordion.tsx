@@ -4,9 +4,11 @@ import { getShowcaseItemsForCategory } from "@/app/nearby/showcase/[category]/Sh
 import { attachDistances, ShowcaseItem } from "@/lib/showcase-utils";
 import { mapUrl } from '@/lib/nearby-helpers';
 import { UIMessages } from '@/lib/ui-messages';
+import BeAChefButton from '@/components/showcase/BeAChefButton';
 
 interface ShowcaseDetailItemsAccordionProps {
   categoryId: string;
+  enableBeAChef?: boolean;
 }
 
 const sortModes = [
@@ -14,7 +16,7 @@ const sortModes = [
   { key: "near", label: UIMessages.showcaseNearbyYou },
 ];
 
-export default function ShowcaseDetailItemsAccordion({ categoryId }: ShowcaseDetailItemsAccordionProps) {
+export default function ShowcaseDetailItemsAccordion({ categoryId, enableBeAChef = false }: ShowcaseDetailItemsAccordionProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<ShowcaseItem[]>([]);
@@ -129,37 +131,51 @@ export default function ShowcaseDetailItemsAccordion({ categoryId }: ShowcaseDet
           {displayItems.map((item) => {
             const mapsHref = mapUrl(item.lat, item.lng, item.placeName, item.googlePlaceId);
             return (
-              <a
+              <div
                 key={item.placeId}
-                href={mapsHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-3xl bg-white/95 border border-neutral-100 shadow p-6 flex flex-col items-start hover:shadow-xl transition cursor-pointer min-h-[220px] backdrop-blur-sm"
-                title="Open in Google Maps"
-                onClick={() => {
-                  console.log('[ShowcaseDetailItemsAccordion] Open Maps:', { placeId: item.placeId, mapsHref });
-                }}
+                className="relative rounded-3xl bg-white/95 border border-neutral-100 shadow p-6 flex flex-col items-start hover:shadow-xl transition min-h-[220px] backdrop-blur-sm"
               >
-                {item.photos?.length > 0 ? (
-                  <img
-                    src={item.photos[0]}
-                    alt={item.placeName}
-                    className="w-full h-36 object-cover rounded-2xl mb-4 bg-neutral-100 shadow-sm"
-                  />
-                ) : (
-                  <div className="w-full h-36 rounded-2xl mb-4 bg-neutral-100 flex items-center justify-center text-3xl text-neutral-300">🍽️</div>
-                )}
-                <div className="font-extrabold text-lg text-neutral-900 mb-1 truncate w-full drop-shadow-sm">{item.placeName}</div>
-                <div className="text-xs text-neutral-500 mb-2 truncate w-full">{item.address}</div>
-                <div className="flex gap-2 text-xs text-yellow-700 mb-2">
-                  <span>⭐ {item.googleRating ?? 'N/A'}</span>
-                  <span>({item.googleRatingCount ?? 0} ratings)</span>
-                  {item.distanceKm != null && (
-                    <span className="text-xs text-cyan-700">{item.distanceKm.toFixed(1)} km</span>
+                <a
+                  href={mapsHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex flex-col items-start cursor-pointer w-full"
+                  title="Open in Google Maps"
+                  onClick={() => {
+                    console.log('[ShowcaseDetailItemsAccordion] Open Maps:', { placeId: item.placeId, mapsHref });
+                  }}
+                >
+                  {item.photos?.length > 0 ? (
+                    <img
+                      src={item.photos[0]}
+                      alt={item.placeName}
+                      className="w-full h-36 object-cover rounded-2xl mb-4 bg-neutral-100 shadow-sm"
+                    />
+                  ) : (
+                    <div className="w-full h-36 rounded-2xl mb-4 bg-neutral-100 flex items-center justify-center text-3xl text-neutral-300">🍽️</div>
                   )}
-                </div>
-                <span className="mt-2 text-xs text-blue-700 underline underline-offset-2">Open in Maps</span>
-              </a>
+                  <div className="font-extrabold text-lg text-neutral-900 mb-1 truncate w-full drop-shadow-sm">{item.placeName}</div>
+                  <div className="text-xs text-neutral-500 mb-2 truncate w-full">{item.address}</div>
+                  <div className="flex gap-2 text-xs text-yellow-700 mb-2">
+                    <span>⭐ {item.googleRating ?? 'N/A'}</span>
+                    <span>({item.googleRatingCount ?? 0} ratings)</span>
+                    {item.distanceKm != null && (
+                      <span className="text-xs text-cyan-700">{item.distanceKm.toFixed(1)} km</span>
+                    )}
+                  </div>
+                  <span className="mt-2 text-xs text-blue-700 underline underline-offset-2">Open in Maps</span>
+                </a>
+
+                {enableBeAChef && item.photos?.length > 0 && (
+                  <div className="absolute bottom-4 right-4 z-10">
+                    <BeAChefButton
+                      photoUrl={item.photos[0]}
+                      placeName={item.placeName}
+                      dishHint={item.dishName || null}
+                    />
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>

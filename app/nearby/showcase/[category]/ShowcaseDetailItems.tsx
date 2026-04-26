@@ -1,8 +1,9 @@
 // Renders showcase items (places) for a category
 import { supabase } from '@/lib/supabase'
 import { categoryToSlug, normalizeCategoryKey } from '@/lib/category-utils'
+import BeAChefButton from '@/components/showcase/BeAChefButton'
 
-export default async function ShowcaseDetailItems({ category }: { category: string }) {
+export default async function ShowcaseDetailItems({ category, enableBeAChef = false }: { category: string; enableBeAChef?: boolean }) {
   // Fetch places for this category, only from public groups
   const { data, error } = await supabase
     .from('place_categories')
@@ -41,28 +42,39 @@ export default async function ShowcaseDetailItems({ category }: { category: stri
   }
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-7 mt-8">
-      {data.map((row: any) => (
-        <div
-          key={row.place_id}
-          className="rounded-3xl bg-white/95 border border-neutral-100 shadow-lg p-6 flex flex-col items-start hover:shadow-xl transition cursor-pointer min-h-[220px] backdrop-blur-sm"
-        >
-          {row.places?.photo_urls?.length > 0 ? (
-            <img
-              src={row.places.photo_urls[0]}
-              alt={row.places.name}
-              className="w-full h-36 object-cover rounded-2xl mb-4 bg-neutral-100 shadow-sm"
-            />
-          ) : (
-            <div className="w-full h-36 rounded-2xl mb-4 bg-neutral-100 flex items-center justify-center text-3xl text-neutral-300">🍽️</div>
-          )}
-          <div className="font-extrabold text-lg text-neutral-900 mb-1 truncate w-full drop-shadow-sm">{row.places?.name}</div>
-          <div className="text-xs text-neutral-500 mb-2 truncate w-full">{row.places?.formatted_address}</div>
-          <div className="flex gap-2 text-xs text-yellow-700 mb-2">
-            <span>⭐ {row.places?.google_rating ?? 'N/A'}</span>
-            <span>({row.places?.google_rating_count ?? 0} ratings)</span>
+      {data.map((row: any) => {
+        const photoUrl = row.places?.photo_urls?.[0] ?? null
+        return (
+          <div
+            key={row.place_id}
+            className="relative rounded-3xl bg-white/95 border border-neutral-100 shadow-lg p-6 flex flex-col items-start hover:shadow-xl transition min-h-[220px] backdrop-blur-sm"
+          >
+            {photoUrl ? (
+              <img
+                src={photoUrl}
+                alt={row.places?.name}
+                className="w-full h-36 object-cover rounded-2xl mb-4 bg-neutral-100 shadow-sm"
+              />
+            ) : (
+              <div className="w-full h-36 rounded-2xl mb-4 bg-neutral-100 flex items-center justify-center text-3xl text-neutral-300">🍽️</div>
+            )}
+            <div className="font-extrabold text-lg text-neutral-900 mb-1 truncate w-full drop-shadow-sm">{row.places?.name}</div>
+            <div className="text-xs text-neutral-500 mb-2 truncate w-full">{row.places?.formatted_address}</div>
+            <div className="flex gap-2 text-xs text-yellow-700 mb-2">
+              <span>⭐ {row.places?.google_rating ?? 'N/A'}</span>
+              <span>({row.places?.google_rating_count ?? 0} ratings)</span>
+            </div>
+            {enableBeAChef && photoUrl && (
+              <div className="absolute bottom-4 right-4 z-10">
+                <BeAChefButton
+                  photoUrl={photoUrl}
+                  placeName={row.places?.name ?? null}
+                />
+              </div>
+            )}
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   );
 }
