@@ -145,25 +145,51 @@ export default function ShowcaseDetailItemsAccordion({ categoryId, enableBeAChef
                     console.log('[ShowcaseDetailItemsAccordion] Open Maps:', { placeId: item.placeId, mapsHref });
                   }}
                 >
-                  {item.photos?.length > 0 ? (
-                    <img
-                      src={item.photos[0]}
-                      alt={item.placeName}
-                      className="w-full h-36 object-cover rounded-2xl mb-4 bg-neutral-100 shadow-sm"
-                    />
-                  ) : (
-                    <div className="w-full h-36 rounded-2xl mb-4 bg-neutral-100 flex items-center justify-center text-3xl text-neutral-300">🍽️</div>
-                  )}
+                  <div className="relative w-full">
+                    {item.photos?.length > 0 ? (
+                      <img
+                        src={item.photos[0]}
+                        alt={item.placeName}
+                        className="w-full h-36 object-cover rounded-2xl mb-4 bg-neutral-100 shadow-sm"
+                      />
+                    ) : (
+                      <div className="w-full h-36 rounded-2xl mb-4 bg-neutral-100 flex items-center justify-center text-3xl text-neutral-300">🍽️</div>
+                    )}
+
+                    {/* Top-left pill overlay: distance when sorting Nearby, otherwise rating */}
+                    {sortMode === 'near' && item.distanceKm != null ? (
+                      <span className="pointer-events-none absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-cyan-600/95 px-2.5 py-1 text-[11px] font-bold text-white shadow-md backdrop-blur-sm">
+                        <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden>
+                          <path d="M12 2a7 7 0 0 0-7 7c0 4.97 5.4 11.31 6.4 12.45a.8.8 0 0 0 1.2 0C13.6 20.31 19 13.97 19 9a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z" />
+                        </svg>
+                        {item.distanceKm < 1
+                          ? `${Math.round(item.distanceKm * 1000)} m`
+                          : `${item.distanceKm.toFixed(1)} km`}
+                      </span>
+                    ) : item.googleRating != null ? (
+                      <span className="pointer-events-none absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-500/95 px-2.5 py-1 text-[11px] font-bold text-white shadow-md backdrop-blur-sm">
+                        <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden>
+                          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                        </svg>
+                        {item.googleRating.toFixed(1)}
+                      </span>
+                    ) : null}
+                  </div>
+
                   <div className="font-extrabold text-lg text-neutral-900 mb-1 truncate w-full drop-shadow-sm">{item.placeName}</div>
                   <div className="text-xs text-neutral-500 mb-2 truncate w-full">{item.address}</div>
-                  <div className="flex gap-2 text-xs text-yellow-700 mb-2">
-                    <span>⭐ {item.googleRating ?? 'N/A'}</span>
-                    <span>({item.googleRatingCount ?? 0} ratings)</span>
-                    {item.distanceKm != null && (
-                      <span className="text-xs text-cyan-700">{item.distanceKm.toFixed(1)} km</span>
-                    )}
+                  <div className="flex gap-2 text-xs text-neutral-500 mb-2">
+                    <span>{item.googleRatingCount ?? 0} ratings</span>
                   </div>
-                  <span className="mt-2 text-xs text-blue-700 underline underline-offset-2">Open in Maps</span>
+                  <span
+                    className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-neutral-700 shadow-sm hover:border-neutral-300 hover:bg-neutral-50"
+                    aria-label="Open in Google Maps"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-[#1a73e8]" fill="currentColor" aria-hidden>
+                      <path d="M12 2a7 7 0 0 0-7 7c0 4.97 5.4 11.31 6.4 12.45a.8.8 0 0 0 1.2 0C13.6 20.31 19 13.97 19 9a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z" />
+                    </svg>
+                    Maps
+                  </span>
                 </a>
 
                 {enableBeAChef && item.photos?.length > 0 && (

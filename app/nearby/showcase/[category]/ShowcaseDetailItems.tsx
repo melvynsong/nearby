@@ -49,20 +49,29 @@ export default async function ShowcaseDetailItems({ category, enableBeAChef = fa
             key={row.place_id}
             className="relative rounded-3xl bg-white/95 border border-neutral-100 shadow-lg p-6 flex flex-col items-start hover:shadow-xl transition min-h-[220px] backdrop-blur-sm"
           >
-            {photoUrl ? (
-              <img
-                src={photoUrl}
-                alt={row.places?.name}
-                className="w-full h-36 object-cover rounded-2xl mb-4 bg-neutral-100 shadow-sm"
-              />
-            ) : (
-              <div className="w-full h-36 rounded-2xl mb-4 bg-neutral-100 flex items-center justify-center text-3xl text-neutral-300">🍽️</div>
-            )}
+            <div className="relative w-full">
+              {photoUrl ? (
+                <img
+                  src={photoUrl}
+                  alt={row.places?.name}
+                  className="w-full h-36 object-cover rounded-2xl mb-4 bg-neutral-100 shadow-sm"
+                />
+              ) : (
+                <div className="w-full h-36 rounded-2xl mb-4 bg-neutral-100 flex items-center justify-center text-3xl text-neutral-300">🍽️</div>
+              )}
+              {row.places?.google_rating != null && (
+                <span className="pointer-events-none absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-500/95 px-2.5 py-1 text-[11px] font-bold text-white shadow-md backdrop-blur-sm">
+                  <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden>
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                  </svg>
+                  {Number(row.places.google_rating).toFixed(1)}
+                </span>
+              )}
+            </div>
             <div className="font-extrabold text-lg text-neutral-900 mb-1 truncate w-full drop-shadow-sm">{row.places?.name}</div>
             <div className="text-xs text-neutral-500 mb-2 truncate w-full">{row.places?.formatted_address}</div>
-            <div className="flex gap-2 text-xs text-yellow-700 mb-2">
-              <span>⭐ {row.places?.google_rating ?? 'N/A'}</span>
-              <span>({row.places?.google_rating_count ?? 0} ratings)</span>
+            <div className="flex gap-2 text-xs text-neutral-500 mb-2">
+              <span>{row.places?.google_rating_count ?? 0} ratings</span>
             </div>
             {enableBeAChef && photoUrl && (
               <div className="absolute bottom-4 right-4 z-10">
