@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+export type BeAChefClue = {
+  label: string
+  /** Normalized 0-1 coordinates within the photo. null if AI did not locate it. */
+  x: number | null
+  y: number | null
+}
+
 export type BeAChefAnalysis = {
   dish_name: string
   confidence: number
-  key_visual_clues: string[]
+  key_visual_clues: BeAChefClue[]
   reasoning_summary: string
   ingredients: string[]
   steps: string[]
@@ -14,10 +21,10 @@ const FALLBACK: BeAChefAnalysis = {
   dish_name: 'Home-style dish',
   confidence: 55,
   key_visual_clues: [
-    'Visible main ingredient',
-    'Sauce / broth tone',
-    'Garnish detected',
-    'Plating style',
+    { label: 'Main ingredient', x: null, y: null },
+    { label: 'Sauce / broth', x: null, y: null },
+    { label: 'Garnish', x: null, y: null },
+    { label: 'Plating style', x: null, y: null },
   ],
   reasoning_summary:
     'Not enough visual detail for a confident identification, so this is a generic home-style guide.',
@@ -60,7 +67,7 @@ Context:
 Rules:
 - Prefer specific, well-known dish names (e.g., "Bak Chor Mee", "Chicken Rice", "Char Kway Teow", "Laksa", "Mee Rebus", "Hokkien Mee", "Roti Prata", "Nasi Lemak").
 - Never reply with generic labels like "Asian Food" or "Noodles".
-- key_visual_clues: 4 to 6 short visual cues (max 4 words each) describing what you saw — used as overlay labels (e.g., "Prawn detected", "Thick noodles", "Dark soy sauce", "Garnish: spring onion").
+- key_visual_clues: EXACTLY 4 short visual cues (max 4 words each) describing what you saw. For each clue, ALSO point to where in the image it is using normalized coordinates: x in [0,1] left→right, y in [0,1] top→bottom. The coordinate must be the centre of the actual visible item (e.g. for "Prawn", x/y are on the prawn itself; for "Broth", x/y are on visible broth liquid). If you genuinely cannot locate the clue in the photo, return x=null and y=null for that clue.
 - reasoning_summary: under 25 words, friendly and confident.
 - ingredients: 6 to 10 items written like a home recipe (with quantities).
 - steps: 4 to 7 numbered-style instructions (each one short sentence, no leading numbers).
@@ -71,7 +78,12 @@ Return STRICT JSON in this shape:
 {
   "dish_name": "Bak Chor Mee",
   "confidence": 86,
-  "key_visual_clues": ["Thin mee pok noodles", "Minced pork topping", "Dark vinegar sauce", "Crispy ti poh"],
+  "key_visual_clues": [
+    { "label": "Mee pok noodles", "x": 0.45, "y": 0.55 },
+    { "label": "Minced pork", "x": 0.62, "y": 0.42 },
+    { "label": "Dark vinegar sauce", "x": 0.30, "y": 0.65 },
+    { "label": "Crispy ti poh", "x": 0.70, "y": 0.30 }
+  ],
   "reasoning_summary": "Thin yellow noodles dressed in dark vinegar sauce with minced meat are classic Bak Chor Mee.",
   "ingredients": ["200g mee pok noodles", "150g minced pork", "1 tbsp black vinegar", "..."],
   "steps": ["Cook noodles per packet, drain, toss with sauce.", "..."],
@@ -94,6 +106,39 @@ function asStringArray(value: unknown, max: number): string[] {
     .slice(0, max)
 }
 
+function clampCoord(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  // Some models occasionally return 0-100 instead of 0-1; auto-correct.
+  let v = value
+  if (v > 1) v = v / 100
+  if (v < 0 || v > 1) return null
+  return v
+}
+
+function normalizeClues(value: unknown, max: number): BeAChefClue[] {
+  if (!Array.isArray(value)) return []
+  const out: BeAChefClue[] = []
+  for (const item of value) {
+    if (out.length >= max) break
+    if (typeof item === 'string') {
+      const label = item.trim()
+      if (label) out.push({ label, x: null, y: null })
+      continue
+    }
+    if (typeof item === 'object' && item !== null) {
+      const obj = item as Record<string, unknown>
+      const label = typeof obj.label === 'string' ? obj.label.trim() : ''
+      if (!label) continue
+      out.push({
+        label,
+        x: clampCoord(obj.x),
+        y: clampCoord(obj.y),
+      })
+    }
+  }
+  return out
+}
+
 function normalize(raw: unknown): BeAChefAnalysis {
   const obj = (raw ?? {}) as Record<string, unknown>
   const dishName =
@@ -101,13 +146,12 @@ function normalize(raw: unknown): BeAChefAnalysis {
       ? obj.dish_name.trim()
       : FALLBACK.dish_name
 
+  const clues = normalizeClues(obj.key_visual_clues, 4)
+
   return {
     dish_name: dishName,
     confidence: clampConfidence(obj.confidence) || FALLBACK.confidence,
-    key_visual_clues:
-      asStringArray(obj.key_visual_clues, 6).length > 0
-        ? asStringArray(obj.key_visual_clues, 6)
-        : FALLBACK.key_visual_clues,
+    key_visual_clues: clues.length > 0 ? clues : FALLBACK.key_visual_clues,
     reasoning_summary:
       typeof obj.reasoning_summary === 'string' && obj.reasoning_summary.trim()
         ? obj.reasoning_summary.trim()
@@ -244,10 +288,12 @@ export async function POST(req: NextRequest) {
   }
 
   const result = parsed ?? FALLBACK
+  const locatedClues = result.key_visual_clues.filter((c) => c.x !== null && c.y !== null).length
   console.log('[BeAChef] Analysis complete', {
     dish: result.dish_name,
     confidence: result.confidence,
     clueCount: result.key_visual_clues.length,
+    locatedClues,
     stepCount: result.steps.length,
   })
 
