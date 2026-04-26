@@ -181,62 +181,48 @@ export default function BeAChefSheet({
         type="button"
         aria-label="Close Be a Chef"
         onClick={onClose}
-        className="nearby-sheet-backdrop absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+        className="nearby-sheet-backdrop absolute inset-0 bg-black/60 backdrop-blur-[2px]"
       />
 
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-3">
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-2 sm:p-4 md:p-6">
         <section
-          className="beachef-popup pointer-events-auto flex w-full max-w-md flex-col overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-2xl"
+          className="beachef-popup pointer-events-auto relative flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-2xl md:max-w-3xl lg:max-w-5xl lg:flex-row"
           style={{
+            height: 'min(92vh, 860px)',
             maxHeight: '92vh',
           }}
         >
-          {/* Header row */}
-          <div className="flex items-center justify-between px-5 pb-2 pt-4">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-neutral-900 text-white">
-                <ChefHatIcon className="h-4 w-4" />
-              </span>
-              <div>
-                <p className="text-sm font-bold leading-tight text-neutral-900">Be a Chef</p>
-                <p className="text-[11px] leading-tight text-neutral-500">
-                  {placeName ? `From ${placeName}` : 'AI dish analysis'}
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <path d="M6 6l12 12M18 6L6 18" />
-              </svg>
-            </button>
-          </div>
+          {/* Close button — floats so it stays accessible across both layouts */}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="absolute right-3 top-3 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-neutral-800 shadow-md backdrop-blur-sm hover:bg-white"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
 
-          {/* Scrollable content */}
-          <div className="flex-1 overflow-y-auto px-4 pb-6">
-            {/* Dish image with scan overlay */}
-            <div className="relative w-full overflow-hidden rounded-2xl bg-neutral-100">
-              {/* Image keeps natural aspect ratio */}
+          {/* ── Image column ──────────────────────────────────────────────── */}
+          <div className="relative flex shrink-0 items-center justify-center overflow-hidden bg-neutral-950 lg:flex-1 lg:basis-1/2 lg:max-w-[58%]">
+            <div
+              className="relative w-full"
+              style={{ height: 'clamp(260px, 38vh, 460px)' }}
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={photoUrl}
                 alt="Dish"
-                className="block h-auto max-h-[60vh] w-full object-contain"
+                className="block h-full w-full object-contain"
               />
 
               {/* Scan overlay */}
               {phase === 'scanning' && (
                 <div className="pointer-events-none absolute inset-0">
-                  {/* Slight darken */}
                   <div className="absolute inset-0 bg-black/15" />
-                  {/* Sweep light */}
                   <div className="absolute inset-y-0 -left-1/3 w-1/3 beachef-sweep bg-gradient-to-r from-transparent via-white/40 to-transparent mix-blend-screen" />
 
-                  {/* Markers */}
                   {MARKER_POSITIONS.map((pos, i) => {
                     if (i >= revealedMarkers) return null
                     const label = clues[i] ?? PLACEHOLDER_CLUES[i] ?? 'Detail'
@@ -249,11 +235,11 @@ export default function BeAChefSheet({
                         <div className="relative">
                           <div className="beachef-marker absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-7 w-7 rounded-full border-2 border-white/90 shadow-[0_0_0_4px_rgba(255,255,255,0.18)]" />
                           <div
-                            className="absolute top-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold text-white backdrop-blur-sm"
+                            className="absolute top-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-black/75 px-2 py-1 text-[10px] font-semibold text-white backdrop-blur-sm"
                             style={
                               pos.align === 'right'
-                                ? { left: '20px', maxWidth: '50vw' }
-                                : { right: '20px', maxWidth: '50vw' }
+                                ? { left: '20px', maxWidth: '50%' }
+                                : { right: '20px', maxWidth: '50%' }
                             }
                           >
                             {label}
@@ -264,127 +250,165 @@ export default function BeAChefSheet({
                   })}
                 </div>
               )}
+
+              {/* On lg screens, show place name overlay at bottom of image */}
+              {placeName && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 hidden bg-gradient-to-t from-black/70 to-transparent px-5 pb-4 pt-12 lg:block">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-white/70">From</p>
+                  <p className="line-clamp-1 text-base font-bold text-white">{placeName}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── Details column ────────────────────────────────────────────── */}
+          <div className="flex min-h-0 flex-1 flex-col bg-white lg:max-w-[42%]">
+            {/* Header (mobile + sm only — lg shows the image overlay caption) */}
+            <div className="flex items-center gap-3 border-b border-neutral-100 px-5 py-4 lg:py-5">
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-neutral-900 text-white">
+                <ChefHatIcon className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-base font-bold leading-tight text-neutral-900">Be a Chef</p>
+                <p className="truncate text-xs leading-tight text-neutral-500 lg:hidden">
+                  {placeName ? `From ${placeName}` : 'AI dish analysis'}
+                </p>
+                <p className="hidden text-xs leading-tight text-neutral-500 lg:block">
+                  AI dish analysis
+                </p>
+              </div>
             </div>
 
-            {/* Live analysis text */}
-            {phase === 'scanning' && (
-              <div className="mt-4">
-                <p className="text-sm font-semibold text-neutral-900">
-                  AI is scanning the dish clues…
-                </p>
-                <p className="mt-1 min-h-[20px] text-sm text-neutral-600 transition-opacity duration-300">
-                  {SCAN_MESSAGES[messageIdx]}
-                </p>
-                <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
-                  <div className="h-full w-1/3 bg-neutral-900/80 beachef-sweep" />
-                </div>
-              </div>
-            )}
-
-            {/* Results */}
-            {phase === 'results' && (
-              <div className="mt-4 beachef-fade-up">
-                {errorText && (
-                  <div className="mb-3 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {errorText}
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              {phase === 'scanning' && (
+                <div>
+                  <p className="text-base font-semibold text-neutral-900">
+                    AI is scanning the dish clues…
+                  </p>
+                  <p className="mt-1.5 min-h-[20px] text-sm text-neutral-600 transition-opacity duration-300">
+                    {SCAN_MESSAGES[messageIdx]}
+                  </p>
+                  <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
+                    <div className="h-full w-1/3 bg-neutral-900/80 beachef-sweep" />
                   </div>
-                )}
+                  <ul className="mt-6 space-y-2">
+                    {clues.slice(0, revealedMarkers).map((clue, i) => (
+                      <li
+                        key={i}
+                        className="beachef-fade-up flex items-start gap-2 text-sm text-neutral-700"
+                      >
+                        <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-900" />
+                        <span>{clue}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-                {analysis && (
-                  <>
-                    <div className="flex items-baseline justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-widest text-neutral-400">
-                          Dish identified
-                        </p>
-                        <h3 className="text-xl font-extrabold leading-tight text-neutral-900">
-                          {analysis.dish_name}
-                        </h3>
-                      </div>
-                      <span className="shrink-0 rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">
-                        {analysis.confidence}% match
-                      </span>
+              {phase === 'results' && (
+                <div className="beachef-fade-up">
+                  {errorText && (
+                    <div className="mb-3 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+                      {errorText}
                     </div>
+                  )}
 
-                    {analysis.reasoning_summary && (
-                      <p className="mt-2 text-sm leading-relaxed text-neutral-600">
-                        {analysis.reasoning_summary}
-                      </p>
-                    )}
+                  {analysis && (
+                    <>
+                      <div className="flex items-baseline justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-widest text-neutral-400">
+                            Dish identified
+                          </p>
+                          <h3 className="text-xl font-extrabold leading-tight text-neutral-900">
+                            {analysis.dish_name}
+                          </h3>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">
+                          {analysis.confidence}% match
+                        </span>
+                      </div>
 
-                    {analysis.key_visual_clues.length > 0 && (
+                      {analysis.reasoning_summary && (
+                        <p className="mt-2 text-sm leading-relaxed text-neutral-600">
+                          {analysis.reasoning_summary}
+                        </p>
+                      )}
+
+                      {analysis.key_visual_clues.length > 0 && (
+                        <section className="mt-5">
+                          <p className="text-xs font-bold uppercase tracking-widest text-neutral-500">
+                            Why we think so
+                          </p>
+                          <ul className="mt-2 space-y-1.5">
+                            {analysis.key_visual_clues.map((clue, i) => (
+                              <li key={i} className="flex items-start gap-2 text-sm text-neutral-700">
+                                <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-900" />
+                                <span>{clue}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </section>
+                      )}
+
                       <section className="mt-5">
                         <p className="text-xs font-bold uppercase tracking-widest text-neutral-500">
-                          Why we think so
+                          Ingredients
                         </p>
                         <ul className="mt-2 space-y-1.5">
-                          {analysis.key_visual_clues.map((clue, i) => (
-                            <li key={i} className="flex items-start gap-2 text-sm text-neutral-700">
-                              <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-900" />
-                              <span>{clue}</span>
+                          {analysis.ingredients.map((ing, i) => (
+                            <li
+                              key={i}
+                              className="flex items-start gap-2 text-sm text-neutral-700"
+                            >
+                              <span className="mt-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-[10px] font-bold text-neutral-500">
+                                {i + 1}
+                              </span>
+                              <span>{ing}</span>
                             </li>
                           ))}
                         </ul>
                       </section>
-                    )}
 
-                    <section className="mt-5">
-                      <p className="text-xs font-bold uppercase tracking-widest text-neutral-500">
-                        Ingredients
-                      </p>
-                      <ul className="mt-2 space-y-1.5">
-                        {analysis.ingredients.map((ing, i) => (
-                          <li
-                            key={i}
-                            className="flex items-start gap-2 text-sm text-neutral-700"
-                          >
-                            <span className="mt-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-[10px] font-bold text-neutral-500">
-                              {i + 1}
-                            </span>
-                            <span>{ing}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </section>
-
-                    <section className="mt-5">
-                      <p className="text-xs font-bold uppercase tracking-widest text-neutral-500">
-                        Steps
-                      </p>
-                      <ol className="mt-2 space-y-2">
-                        {analysis.steps.map((step, i) => (
-                          <li key={i} className="flex items-start gap-3 text-sm text-neutral-800">
-                            <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-[11px] font-bold text-white">
-                              {i + 1}
-                            </span>
-                            <span className="leading-relaxed">{step}</span>
-                          </li>
-                        ))}
-                      </ol>
-                    </section>
-
-                    {analysis.local_tips && analysis.local_tips.length > 0 && (
-                      <section className="mt-5 rounded-2xl bg-amber-50 px-4 py-3">
-                        <p className="text-xs font-bold uppercase tracking-widest text-amber-700">
-                          Local tips
+                      <section className="mt-5">
+                        <p className="text-xs font-bold uppercase tracking-widest text-neutral-500">
+                          Steps
                         </p>
-                        <ul className="mt-1.5 space-y-1">
-                          {analysis.local_tips.map((tip, i) => (
-                            <li key={i} className="text-sm text-amber-900">
-                              • {tip}
+                        <ol className="mt-2 space-y-2">
+                          {analysis.steps.map((step, i) => (
+                            <li key={i} className="flex items-start gap-3 text-sm text-neutral-800">
+                              <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-[11px] font-bold text-white">
+                                {i + 1}
+                              </span>
+                              <span className="leading-relaxed">{step}</span>
                             </li>
                           ))}
-                        </ul>
+                        </ol>
                       </section>
-                    )}
 
-                    <p className="mt-5 text-[11px] leading-relaxed text-neutral-400">
-                      Recipe is AI-generated based on visual clues. Adjust to taste.
-                    </p>
-                  </>
-                )}
-              </div>
-            )}
+                      {analysis.local_tips && analysis.local_tips.length > 0 && (
+                        <section className="mt-5 rounded-2xl bg-amber-50 px-4 py-3">
+                          <p className="text-xs font-bold uppercase tracking-widest text-amber-700">
+                            Local tips
+                          </p>
+                          <ul className="mt-1.5 space-y-1">
+                            {analysis.local_tips.map((tip, i) => (
+                              <li key={i} className="text-sm text-amber-900">
+                                • {tip}
+                              </li>
+                            ))}
+                          </ul>
+                        </section>
+                      )}
+
+                      <p className="mt-5 text-[11px] leading-relaxed text-neutral-400">
+                        Recipe is AI-generated based on visual clues. Adjust to taste.
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </section>
       </div>
