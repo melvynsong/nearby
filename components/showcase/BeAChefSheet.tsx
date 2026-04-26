@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { apiPath } from '@/lib/base-path'
 
 export type BeAChefAnalysis = {
@@ -174,9 +175,10 @@ export default function BeAChefSheet({
   }, [isOpen, photoUrl, placeName, dishHint])
 
   if (!isOpen || !photoUrl) return null
+  if (typeof window === 'undefined') return null
 
-  return (
-    <div className="fixed inset-0 z-[70]">
+  const content = (
+    <div className="fixed inset-0 z-[1000]">
       <button
         type="button"
         aria-label="Close Be a Chef"
@@ -414,4 +416,6 @@ export default function BeAChefSheet({
       </div>
     </div>
   )
+
+  return createPortal(content, document.body)
 }
