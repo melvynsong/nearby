@@ -133,13 +133,13 @@ export default function ShowcaseDetailItemsAccordion({ categoryId, enableBeAChef
             return (
               <div
                 key={item.placeId}
-                className="relative rounded-3xl bg-white/95 border border-neutral-100 shadow p-6 flex flex-col items-start hover:shadow-xl transition min-h-[220px] backdrop-blur-sm"
+                className="group relative rounded-3xl bg-white/95 border border-neutral-100 shadow p-4 flex flex-col items-stretch hover:shadow-xl transition min-h-[220px] backdrop-blur-sm"
               >
                 <a
                   href={mapsHref}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex flex-col items-start cursor-pointer w-full"
+                  className="flex flex-col items-stretch cursor-pointer w-full"
                   title="Open in Google Maps"
                   onClick={() => {
                     console.log('[ShowcaseDetailItemsAccordion] Open Maps:', { placeId: item.placeId, mapsHref });
@@ -150,13 +150,13 @@ export default function ShowcaseDetailItemsAccordion({ categoryId, enableBeAChef
                       <img
                         src={item.photos[0]}
                         alt={item.placeName}
-                        className="w-full h-36 object-cover rounded-2xl mb-4 bg-neutral-100 shadow-sm"
+                        className="w-full h-40 object-cover rounded-2xl bg-neutral-100 shadow-sm"
                       />
                     ) : (
-                      <div className="w-full h-36 rounded-2xl mb-4 bg-neutral-100 flex items-center justify-center text-3xl text-neutral-300">🍽️</div>
+                      <div className="w-full h-40 rounded-2xl bg-neutral-100 flex items-center justify-center text-3xl text-neutral-300">🍽️</div>
                     )}
 
-                    {/* Top-left pill overlay: distance when sorting Nearby, otherwise rating */}
+                    {/* Top-left: rating or distance */}
                     {sortMode === 'near' && item.distanceKm != null ? (
                       <span className="pointer-events-none absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-cyan-600/95 px-2.5 py-1 text-[11px] font-bold text-white shadow-md backdrop-blur-sm">
                         <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden>
@@ -176,31 +176,39 @@ export default function ShowcaseDetailItemsAccordion({ categoryId, enableBeAChef
                     ) : null}
                   </div>
 
-                  <div className="font-extrabold text-lg text-neutral-900 mb-1 truncate w-full drop-shadow-sm">{item.placeName}</div>
-                  <div className="text-xs text-neutral-500 mb-2 truncate w-full">{item.address}</div>
-                  <div className="flex gap-2 text-xs text-neutral-500 mb-2">
-                    <span>{item.googleRatingCount ?? 0} ratings</span>
+                  <div className="px-2 pt-3">
+                    <div className="font-extrabold text-base text-neutral-900 mb-0.5 truncate w-full">{item.placeName}</div>
+                    <div className="text-xs text-neutral-500 mb-1 truncate w-full">{item.address}</div>
+                    <div className="text-[11px] text-neutral-400">{item.googleRatingCount ?? 0} ratings</div>
                   </div>
-                  <span
-                    className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-neutral-700 shadow-sm hover:border-neutral-300 hover:bg-neutral-50"
+                </a>
+
+                {/* Footer action row: Maps + Be a Chef side-by-side, never overlapping. */}
+                <div className="mt-3 flex items-center justify-between gap-2 px-2 pb-1">
+                  <a
+                    href={mapsHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-neutral-700 shadow-sm hover:border-neutral-300 hover:bg-neutral-50"
                     aria-label="Open in Google Maps"
+                    onClick={(e) => e.stopPropagation()}
                   >
                     <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-[#1a73e8]" fill="currentColor" aria-hidden>
                       <path d="M12 2a7 7 0 0 0-7 7c0 4.97 5.4 11.31 6.4 12.45a.8.8 0 0 0 1.2 0C13.6 20.31 19 13.97 19 9a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z" />
                     </svg>
                     Maps
-                  </span>
-                </a>
+                  </a>
 
-                {enableBeAChef && item.photos?.length > 0 && (
-                  <div className="absolute bottom-4 right-4 z-10">
+                  {enableBeAChef && item.photos?.length > 0 ? (
                     <BeAChefButton
                       photoUrl={item.photos[0]}
                       placeName={item.placeName}
                       dishHint={item.dishName || null}
                     />
-                  </div>
-                )}
+                  ) : (
+                    <span aria-hidden />
+                  )}
+                </div>
               </div>
             );
           })}

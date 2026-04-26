@@ -223,11 +223,8 @@ export default function BeAChefSheet({
           </button>
 
           {/* ── Image column ──────────────────────────────────────────────── */}
-          <div className="relative flex shrink-0 items-center justify-center overflow-hidden bg-neutral-950 lg:flex-1 lg:basis-1/2 lg:max-w-[58%]">
-            <div
-              className="relative w-full"
-              style={{ height: 'clamp(260px, 38vh, 460px)' }}
-            >
+          <div className="relative flex shrink-0 items-stretch overflow-hidden bg-neutral-950 lg:flex-1 lg:basis-3/5 lg:max-w-[60%] lg:self-stretch">
+            <div className="relative h-[55vh] w-full sm:h-[62vh] lg:h-full">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={photoUrl}
@@ -321,7 +318,7 @@ export default function BeAChefSheet({
           </div>
 
           {/* ── Details column ────────────────────────────────────────────── */}
-          <div className="flex min-h-0 flex-1 flex-col bg-white lg:max-w-[42%]">
+          <div className="flex min-h-0 flex-1 flex-col bg-white lg:max-w-[40%]">
             {/* Header (mobile + sm only — lg shows the image overlay caption) */}
             <div className="flex items-center gap-3 border-b border-neutral-100 px-5 py-4 lg:py-5">
               <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-neutral-900 text-white">
