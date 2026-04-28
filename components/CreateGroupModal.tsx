@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import GroupInviteActions from '@/components/GroupInviteActions'
 import { apiPath } from '@/lib/base-path'
+import { UIMessages } from '@/lib/ui-messages'
 
 type Friend = {
   id: string
@@ -223,7 +224,7 @@ export default function CreateGroupModal({
             disabled={loading}
             className="w-full rounded-xl bg-[#1f355d] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#162746] disabled:opacity-50"
           >
-            {loading ? 'Creating group...' : 'Create group'}
+            {loading ? UIMessages.actionCreatingGroup : 'Create group'}
           </button>
             </>
           )}

@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import ErrorState from '@/components/ErrorState'
 import TransformedImage from '@/components/TransformedImage'
 import PhotoAdjustSheet from '@/components/PhotoAdjustSheet'
+import ChefScanOverlay from '@/components/showcase/ChefScanOverlay'
+import type { BeAChefAnalysis } from '@/components/showcase/BeAChefSheet'
 import {
   DEFAULT_IMAGE_TRANSFORM,
   type ImageTransform,
@@ -12,6 +14,7 @@ import {
 } from '@/lib/image-transform'
 import { apiPath, withBasePath } from '@/lib/base-path'
 import { supabase } from '@/lib/supabase'
+import { UIMessages } from '@/lib/ui-messages'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -187,6 +190,7 @@ function AddPlaceInner() {
   const [flowState, setFlowState] = useState<FlowState>('idle')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [chefAnalysis, setChefAnalysis] = useState<BeAChefAnalysis | null>(null)
   const [imageTransform, setImageTransform] = useState<ImageTransform>(DEFAULT_IMAGE_TRANSFORM)
   const [isTransformCustomized, setIsTransformCustomized] = useState(false)
   const [showAdjustSheet, setShowAdjustSheet] = useState(false)
@@ -241,6 +245,7 @@ function AddPlaceInner() {
           return null
         })
         setSelectedFile(null)
+        setChefAnalysis(null)
         setImageTransform(DEFAULT_IMAGE_TRANSFORM)
         setIsTransformCustomized(false)
         setShowAdjustSheet(false)
@@ -435,12 +440,44 @@ function AddPlaceInner() {
   const runAnalysis = useCallback(async (file: File, placeContext?: { placeId: string; placeName: string } | null) => {
     setFlowState('analyzing')
     setAiError('')
+    setChefAnalysis(null)
     try {
       const formData = new FormData()
       formData.append('image', file)
       if (placeContext?.placeId) formData.append('placeId', placeContext.placeId)
       if (placeContext?.placeName) formData.append('placeName', placeContext.placeName)
       if (session?.memberId) formData.append('userId', session.memberId)
+
+      // Fire the Be a Chef visual scan in parallel — non-blocking. It powers
+      // the on-image ingredient markers shown over the preview while the
+      // primary dish-suggestion call continues.
+      void (async () => {
+        try {
+          const dataUrl: string = await new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
+            reader.onerror = () => reject(reader.error)
+            reader.readAsDataURL(file)
+          })
+          if (!dataUrl) return
+          const chefRes = await fetch(apiPath('/api/be-a-chef/analyze'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              photoUrl: dataUrl,
+              placeName: placeContext?.placeName ?? null,
+            }),
+          })
+          if (!chefRes.ok) return
+          const chefJson = await chefRes.json() as BeAChefAnalysis
+          console.log('[AddPlace][BeAChef] grounded ingredients', {
+            located: chefJson.key_visual_clues.filter((c) => c.x !== null && c.y !== null).length,
+          })
+          setChefAnalysis(chefJson)
+        } catch (err) {
+          console.warn('[AddPlace][BeAChef] visual scan failed (non-fatal):', err)
+        }
+      })()
 
       const res = await fetch(apiPath('/api/food/suggest'), { method: 'POST', body: formData })
       const data = await res.json()
@@ -818,13 +855,25 @@ function AddPlaceInner() {
             {/* Photo preview – full width */}
             {previewUrl && (
               <>
-                <TransformedImage
-                  src={previewUrl}
-                  alt="Food preview"
-                  transform={imageTransform}
-                  className="aspect-[4/3] rounded-none"
-                  onMetrics={({ image }) => setPreviewImageSize(image)}
-                />
+                <div className="relative">
+                  <TransformedImage
+                    src={previewUrl}
+                    alt="Food preview"
+                    transform={imageTransform}
+                    className="aspect-[4/3] rounded-none"
+                    onMetrics={({ image }) => setPreviewImageSize(image)}
+                  />
+                  <ChefScanOverlay
+                    phase={
+                      flowState === 'analyzing'
+                        ? 'scanning'
+                        : chefAnalysis
+                          ? 'results'
+                          : 'idle'
+                    }
+                    clues={chefAnalysis?.key_visual_clues ?? []}
+                  />
+                </div>
                 <div className="flex gap-2 p-3">
                   <button
                     type="button"
@@ -1120,7 +1169,7 @@ function AddPlaceInner() {
               disabled={saving || loadingDetails || isBlocking}
               className="w-full rounded-xl bg-[#1f355d] hover:bg-[#162746] px-4 py-3 text-sm font-semibold text-white transition-all duration-300 disabled:opacity-40"
             >
-              {saving ? 'Saving...' : mode === 'edit' ? 'Save changes' : 'Save food spot'}
+              {saving ? UIMessages.actionSaving : mode === 'edit' ? 'Save changes' : 'Save food spot'}
             </button>
           )}
 

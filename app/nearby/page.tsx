@@ -13,6 +13,7 @@ import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
 import { readTransformFromMap, type TransformMap } from '@/lib/image-transform'
 import { withBasePath } from '@/lib/base-path'
+import { UIMessages } from '@/lib/ui-messages'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -1030,7 +1031,7 @@ export default function NearbyHome() {
                 disabled={deletingPlace}
                 className="flex-1 rounded-xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50 transition-colors"
               >
-                {deletingPlace ? 'Deleting…' : 'Delete'}
+                {deletingPlace ? UIMessages.actionDeleting : 'Delete'}
               </button>
               <button
                 onClick={() => { setDeletePlaceTarget(null); setDeletePlaceError('') }}

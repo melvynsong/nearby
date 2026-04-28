@@ -8,6 +8,7 @@ import ErrorState from '@/components/ErrorState'
 import GroupInviteActions from '@/components/GroupInviteActions'
 import { supabase } from '@/lib/supabase'
 import { apiPath, withBasePath } from '@/lib/base-path'
+import { UIMessages } from '@/lib/ui-messages'
 
 type Friend = {
   id: string   // local key only
@@ -373,7 +374,7 @@ export default function CreateGroup() {
             disabled={saving}
             className="w-full rounded-xl bg-[#1f355d] hover:bg-[#162746] active:bg-[#12203a] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 transition-colors"
           >
-            {saving ? 'Creating group…' : 'Create group'}
+            {saving ? UIMessages.actionCreatingGroup : 'Create group'}
           </button>
         </div>
       </div>

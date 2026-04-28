@@ -7,6 +7,7 @@ export const UIMessages = {
   loadingGeneric: "Wait ah, getting things ready...",
   loadingShowcase: "Hold on, bringing the best makan to your table...",
   loadingDetails: "Fetching your group details...",
+  loadingSession: "Warming up your seat at the table...",
 
   // Empty states
   emptyShowcase: "Nothing here yet leh - be the first to add a shiok spot.",
@@ -20,12 +21,14 @@ export const UIMessages = {
   errorGroupSettings: "Aiyo, cannot load group settings - try again can?",
   errorLogin: "Cannot log in now - try again later, can?",
   errorUpdate: "Cannot update now - try again later, can?",
+  errorTimeout: "Took too long lah. Try again?",
 
   // Success
   successSaved: "Settle liao! Your changes are saved.",
   successGroupCreated: "Group created - faster jio your kakis come makan!",
   successSettings: "Settings updated. Steady lah!",
   successInvite: "Invite sent! Your kakis sure happy one.",
+  successDeleted: "Gone already. Onto the next one!",
 
   // Location
   locationWokHei: "🍜 Wok hei still warming up - showing you the top-rated spots first, can?",
@@ -64,4 +67,17 @@ export const UIMessages = {
   // Invitation/share
   inviteSent: "Invite sent! Your kakis sure happy one.",
   shareLink: "Share this link, jio your friends makan together.",
+
+  // Action button states (in-progress copy on buttons / inline labels)
+  actionSaving: "Saving... hold on lah",
+  actionSavingShort: "Saving lah...",
+  actionDeleting: "Removing... wait ah",
+  actionCreatingAccount: "Cooking up your account...",
+  actionCreatingGroup: "Setting the table for your kakis...",
+  actionJoiningGroup: "Pulling up a chair for you...",
+  actionAnalyzing: "Chef is checking the dish...",
+  actionUploading: "Plating your photo...",
+  actionInviting: "Sending the jio...",
+  actionUpdating: "Updating - one second lah",
+  actionLoadingSession: "Warming up your seat at the table...",
 };

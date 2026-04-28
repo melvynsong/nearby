@@ -6,6 +6,7 @@ import { normalizePhoneNumber, phoneLast4 } from '@/lib/helpers'
 import AppHeader from '@/components/AppHeader'
 import { supabase } from '@/lib/supabase'
 import { withBasePath } from '@/lib/base-path'
+import { UIMessages } from '@/lib/ui-messages'
 
 export default function Register() {
   const router = useRouter()
@@ -274,7 +275,7 @@ export default function Register() {
             disabled={saving}
             className="w-full rounded-xl bg-[#1f355d] hover:bg-[#162746] active:bg-[#12203a] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 transition-colors"
           >
-            {saving ? 'Creating account…' : 'Create account'}
+            {saving ? UIMessages.actionCreatingAccount : 'Create account'}
           </button>
 
           <p className="text-center text-xs text-neutral-400">

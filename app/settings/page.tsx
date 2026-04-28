@@ -8,6 +8,7 @@ import { apiPath, withBasePath } from '@/lib/base-path'
 import { markPasscodeSet } from '@/lib/auth-guard'
 import { buildGroupInviteMessage } from '@/lib/invite'
 import { supabase } from '@/lib/supabase'
+import { UIMessages } from '@/lib/ui-messages'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -511,7 +512,7 @@ function GroupCard({
                         disabled={saving}
                         className="flex-1 rounded-xl bg-[#1f355d] px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
                       >
-                        {saving ? 'Saving…' : 'Save'}
+                        {saving ? UIMessages.actionSaving : 'Save'}
                       </button>
                       <button
                         type="button"
@@ -531,7 +532,7 @@ function GroupCard({
                           disabled={deletingGroup}
                           className="w-full rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
                         >
-                          {deletingGroup ? 'Deleting…' : 'Delete this group'}
+                          {deletingGroup ? UIMessages.actionDeleting : 'Delete this group'}
                         </button>
                         {deleteError && <p className="mt-2 text-xs text-rose-700">{deleteError}</p>}
                       </div>
@@ -605,7 +606,7 @@ function GroupCard({
                       disabled={saving}
                       className="mt-2 w-full rounded-xl bg-[#1f355d] px-3 py-2.5 text-sm font-medium text-white disabled:opacity-50"
                     >
-                      {saving ? 'Saving…' : 'Save passcode'}
+                      {saving ? UIMessages.actionSaving : 'Save passcode'}
                     </button>
                   )}
                 </div>
@@ -637,7 +638,7 @@ function GroupCard({
                         disabled={inviteSaving}
                         className="rounded-xl bg-[#1f355d] px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
                       >
-                        {inviteSaving ? '…' : 'Invite'}
+                        {inviteSaving ? UIMessages.actionInviting : 'Invite'}
                       </button>
                     </div>
                     <p className="mt-2 text-xs text-neutral-500">Invite saves instantly and appears in People right away.</p>
@@ -1012,7 +1013,7 @@ function SettingsPage() {
                 disabled={profileSaving}
                 className="mt-4 w-full rounded-xl bg-[#1f355d] px-4 py-3 text-sm font-medium text-white disabled:opacity-50 hover:bg-[#162847]"
               >
-                {profileSaving ? 'Saving…' : 'Save profile'}
+                {profileSaving ? UIMessages.actionSaving : 'Save profile'}
               </button>
             </section>
 

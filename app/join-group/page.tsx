@@ -6,6 +6,7 @@ import AppHeader from '@/components/AppHeader'
 import ErrorState from '@/components/ErrorState'
 import { resolveUserId, isPasscodeSetLocally } from '@/lib/auth-guard'
 import { apiPath, withBasePath } from '@/lib/base-path'
+import { UIMessages } from '@/lib/ui-messages'
 
 type SessionData = {
   memberId: string
@@ -187,7 +188,7 @@ export default function JoinGroupPage() {
             disabled={loading}
             className="mt-4 w-full rounded-xl bg-[#1f355d] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#162746] disabled:opacity-50"
           >
-            {loading ? 'Joining...' : 'Join Group'}
+            {loading ? UIMessages.actionJoiningGroup : 'Join Group'}
           </button>
         </div>
       </div>

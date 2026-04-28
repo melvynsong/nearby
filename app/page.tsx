@@ -8,6 +8,7 @@ import ErrorState from '@/components/ErrorState'
 import BrandMark from '@/components/BrandMark'
 import NearbyHome from '@/app/nearby/page'
 import { apiPath, withBasePath } from '@/lib/base-path'
+import { UIMessages } from '@/lib/ui-messages'
 
 type GroupEntry = {
   memberId: string
@@ -121,7 +122,7 @@ export default function Home() {
     return (
       <main className="min-h-screen bg-[#f5f6f8] py-10">
         <div className="nearby-shell flex min-h-[60vh] items-center justify-center">
-          <p className="text-sm text-[#677088]">Loading your Nearby session…</p>
+          <p className="text-sm text-[#677088]">{UIMessages.actionLoadingSession}</p>
         </div>
       </main>
     )
