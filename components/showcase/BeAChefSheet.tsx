@@ -40,22 +40,6 @@ const SCAN_MESSAGES = [
   'Building a home-style recipe…',
 ]
 
-const PLACEHOLDER_CLUES = [
-  'Main ingredient',
-  'Texture',
-  'Sauce / broth',
-  'Garnish',
-]
-
-// Decorative positions used during the scan animation only. Once the AI
-// returns, real clue coordinates replace these.
-const SCAN_DECORATIVE_POSITIONS: Array<{ x: number; y: number }> = [
-  { x: 0.30, y: 0.30 },
-  { x: 0.68, y: 0.40 },
-  { x: 0.36, y: 0.65 },
-  { x: 0.72, y: 0.70 },
-]
-
 const MAX_CLUES = 4
 
 function ChefHatIcon({ className = '' }: { className?: string }) {
@@ -86,23 +70,16 @@ export default function BeAChefSheet({
 }: Props) {
   const [phase, setPhase] = useState<'scanning' | 'results'>('scanning')
   const [messageIdx, setMessageIdx] = useState(0)
-  const [revealedMarkers, setRevealedMarkers] = useState(0)
   const [analysis, setAnalysis] = useState<BeAChefAnalysis | null>(null)
   const [errorText, setErrorText] = useState<string | null>(null)
 
-  // During scan: use decorative placeholder labels at fixed positions.
-  // After scan: only render clues that the AI grounded with x/y coordinates.
+  // Only render clues that the AI grounded with real x/y coordinates.
   const groundedClues = useMemo(() => {
     if (!analysis) return []
     return analysis.key_visual_clues
       .filter((c) => c.x !== null && c.y !== null && c.label)
       .slice(0, MAX_CLUES) as Array<BeAChefClue & { x: number; y: number }>
   }, [analysis])
-
-  const scanLabels = useMemo(
-    () => PLACEHOLDER_CLUES.slice(0, SCAN_DECORATIVE_POSITIONS.length),
-    [],
-  )
 
   // Body scroll lock
   useEffect(() => {
@@ -119,7 +96,6 @@ export default function BeAChefSheet({
     if (!isOpen) return
     setPhase('scanning')
     setMessageIdx(0)
-    setRevealedMarkers(0)
     setAnalysis(null)
     setErrorText(null)
   }, [isOpen, photoUrl])
@@ -131,21 +107,6 @@ export default function BeAChefSheet({
       setMessageIdx((i) => (i + 1) % SCAN_MESSAGES.length)
     }, 800)
     return () => clearInterval(id)
-  }, [isOpen, phase])
-
-  // Progressive marker reveal during scan
-  useEffect(() => {
-    if (!isOpen || phase !== 'scanning') return
-    setRevealedMarkers(0)
-    const timeouts: ReturnType<typeof setTimeout>[] = []
-    for (let i = 0; i < SCAN_DECORATIVE_POSITIONS.length; i++) {
-      timeouts.push(
-        setTimeout(() => setRevealedMarkers((v) => Math.max(v, i + 1)), 600 + i * 600),
-      )
-    }
-    return () => {
-      timeouts.forEach((t) => clearTimeout(t))
-    }
   }, [isOpen, phase])
 
   // Run analysis with intentional delay
@@ -232,41 +193,11 @@ export default function BeAChefSheet({
                 className="block h-full w-full object-contain"
               />
 
-              {/* Scan overlay (decorative, before AI returns) */}
+              {/* Scan overlay (sweep only — no decorative labels) */}
               {phase === 'scanning' && (
                 <div className="pointer-events-none absolute inset-0">
                   <div className="absolute inset-0 bg-black/15" />
                   <div className="absolute inset-y-0 -left-1/3 w-1/3 beachef-sweep bg-gradient-to-r from-transparent via-white/40 to-transparent mix-blend-screen" />
-
-                  {SCAN_DECORATIVE_POSITIONS.map((pos, i) => {
-                    if (i >= revealedMarkers) return null
-                    const label = scanLabels[i] ?? 'Scanning…'
-                    const align: 'left' | 'right' = pos.x < 0.5 ? 'right' : 'left'
-                    return (
-                      <div
-                        key={i}
-                        className="absolute beachef-fade-up"
-                        style={{
-                          top: `${pos.y * 100}%`,
-                          left: `${pos.x * 100}%`,
-                        }}
-                      >
-                        <div className="relative">
-                          <div className="beachef-marker absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-7 w-7 rounded-full border-2 border-white/90 shadow-[0_0_0_4px_rgba(255,255,255,0.18)]" />
-                          <div
-                            className="absolute top-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-black/75 px-2 py-1 text-[10px] font-semibold text-white backdrop-blur-sm"
-                            style={
-                              align === 'right'
-                                ? { left: '20px', maxWidth: '55%' }
-                                : { right: '20px', maxWidth: '55%' }
-                            }
-                          >
-                            {label}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
                 </div>
               )}
 
@@ -347,17 +278,6 @@ export default function BeAChefSheet({
                   <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
                     <div className="h-full w-1/3 bg-neutral-900/80 beachef-sweep" />
                   </div>
-                  <ul className="mt-6 space-y-2">
-                    {scanLabels.slice(0, revealedMarkers).map((label, i) => (
-                      <li
-                        key={i}
-                        className="beachef-fade-up flex items-start gap-2 text-sm text-neutral-700"
-                      >
-                        <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-900" />
-                        <span>{label}</span>
-                      </li>
-                    ))}
-                  </ul>
                 </div>
               )}
 

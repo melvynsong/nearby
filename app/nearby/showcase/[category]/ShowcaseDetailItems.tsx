@@ -2,9 +2,10 @@
 import { supabase } from '@/lib/supabase'
 import { categoryToSlug, normalizeCategoryKey } from '@/lib/category-utils'
 import BeAChefButton from '@/components/showcase/BeAChefButton'
+import ShareCategoryButton from '@/components/showcase/ShareCategoryButton'
 import { mapUrl } from '@/lib/nearby-helpers'
 
-export default async function ShowcaseDetailItems({ category, enableBeAChef = false }: { category: string; enableBeAChef?: boolean }) {
+export default async function ShowcaseDetailItems({ category, enableBeAChef = false, categoryTitle }: { category: string; enableBeAChef?: boolean; categoryTitle?: string }) {
   // Fetch places for this category, only from public groups
   const { data, error } = await supabase
     .from('place_categories')
@@ -41,8 +42,24 @@ export default async function ShowcaseDetailItems({ category, enableBeAChef = fa
     const groupIds = data.map((row: any) => row.food_categories?.groups?.id).filter(Boolean);
     console.log('[ShowcaseDetailItems.tsx] Group IDs:', groupIds);
   }
+  const shareSpots = data
+    .filter((row: any) => row.places?.name)
+    .map((row: any) => ({
+      placeName: row.places.name as string,
+      address: row.places?.formatted_address ?? null,
+      lat: row.places?.lat ?? null,
+      lng: row.places?.lng ?? null,
+      googlePlaceId: row.places?.google_place_id ?? null,
+    }))
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-7 mt-8">
+    <div>
+      {categoryTitle && shareSpots.length > 0 && (
+        <div className="mb-4 flex justify-end">
+          <ShareCategoryButton categoryTitle={categoryTitle} spots={shareSpots} />
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-7">
       {data.map((row: any) => {
         const photoUrl = row.places?.photo_urls?.[0] ?? null
         const mapsHref = mapUrl(row.places?.lat, row.places?.lng, row.places?.name, row.places?.google_place_id)
@@ -110,6 +127,7 @@ export default async function ShowcaseDetailItems({ category, enableBeAChef = fa
           </div>
         )
       })}
+      </div>
     </div>
   );
 }

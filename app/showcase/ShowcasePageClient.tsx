@@ -183,7 +183,11 @@ export default function ShowcasePageClient({ showcases }: ShowcasePageClientProp
                 >
                   {isExpanded ? (
                     <div className="mt-2">
-                      <ShowcaseDetailItemsAccordion categoryId={categoryId} enableBeAChef />
+                      <ShowcaseDetailItemsAccordion
+                        categoryId={categoryId}
+                        categoryTitle={getShowcaseDisplayName(config) || config.title}
+                        enableBeAChef
+                      />
                     </div>
                   ) : null}
                 </div>

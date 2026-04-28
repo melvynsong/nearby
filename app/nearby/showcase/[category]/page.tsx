@@ -91,7 +91,7 @@ export default async function ShowcaseDetailPage({ params }: { params: { categor
         <Link href="/nearby/showcase" className="inline-flex items-center gap-2 rounded-full bg-yellow-400 text-yellow-900 font-semibold px-5 py-2 shadow hover:bg-yellow-300 transition mb-6">← Back to Showcases</Link>
         {/* Content section */}
         <div className="rounded-3xl bg-white/90 shadow-lg p-6 md:p-8 w-full">
-          <ShowcaseDetailItems category={config.categoryIds?.[0] ?? ''} enableBeAChef />
+          <ShowcaseDetailItems category={config.categoryIds?.[0] ?? ''} categoryTitle={displayTitle} enableBeAChef />
         </div>
       </div>
     </main>

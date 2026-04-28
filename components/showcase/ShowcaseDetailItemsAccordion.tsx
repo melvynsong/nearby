@@ -5,10 +5,12 @@ import { attachDistances, ShowcaseItem } from "@/lib/showcase-utils";
 import { mapUrl } from '@/lib/nearby-helpers';
 import { UIMessages } from '@/lib/ui-messages';
 import BeAChefButton from '@/components/showcase/BeAChefButton';
+import ShareCategoryButton from '@/components/showcase/ShareCategoryButton';
 
 interface ShowcaseDetailItemsAccordionProps {
   categoryId: string;
   enableBeAChef?: boolean;
+  categoryTitle?: string;
 }
 
 const sortModes = [
@@ -16,7 +18,7 @@ const sortModes = [
   { key: "near", label: UIMessages.showcaseNearbyYou },
 ];
 
-export default function ShowcaseDetailItemsAccordion({ categoryId, enableBeAChef = false }: ShowcaseDetailItemsAccordionProps) {
+export default function ShowcaseDetailItemsAccordion({ categoryId, enableBeAChef = false, categoryTitle }: ShowcaseDetailItemsAccordionProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<ShowcaseItem[]>([]);
@@ -88,23 +90,37 @@ export default function ShowcaseDetailItemsAccordion({ categoryId, enableBeAChef
 
   return (
     <div className="rounded-2xl bg-white/95 border border-neutral-100 shadow-lg p-6 flex flex-col gap-4 animate-fade-in">
-      <div className="flex gap-2 mb-2">
-        {sortModes.map((mode) => (
-          <button
-            key={mode.key}
-            className={`rounded-full px-4 py-1 text-xs font-semibold transition-all duration-150 ${
-              sortMode === mode.key
-                ? "bg-yellow-400 text-yellow-900 shadow"
-                : "bg-neutral-100 text-neutral-700 hover:bg-yellow-100 hover:text-yellow-700"
-            }`}
-            onClick={() => {
-              setSortMode(mode.key);
-              if (mode.key === "near" && !userLocation && !locationDenied) requestLocation();
-            }}
-          >
-            {mode.label}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <div className="flex gap-2">
+          {sortModes.map((mode) => (
+            <button
+              key={mode.key}
+              className={`rounded-full px-4 py-1 text-xs font-semibold transition-all duration-150 ${
+                sortMode === mode.key
+                  ? "bg-yellow-400 text-yellow-900 shadow"
+                  : "bg-neutral-100 text-neutral-700 hover:bg-yellow-100 hover:text-yellow-700"
+              }`}
+              onClick={() => {
+                setSortMode(mode.key);
+                if (mode.key === "near" && !userLocation && !locationDenied) requestLocation();
+              }}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+        {categoryTitle && displayItems.length > 0 && (
+          <ShareCategoryButton
+            categoryTitle={categoryTitle}
+            spots={displayItems.map((it) => ({
+              placeName: it.placeName,
+              address: it.address,
+              lat: it.lat,
+              lng: it.lng,
+              googlePlaceId: it.googlePlaceId,
+            }))}
+          />
+        )}
       </div>
       {locationDenied && sortMode === "near" && (
         <div className="text-xs text-amber-700 bg-amber-50 rounded px-3 py-2 mb-2 flex items-center gap-2">
